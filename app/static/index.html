@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Video Quality Survey</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main id="app">
+    <!-- Consent -->
+    <section id="consent" class="card hidden">
+      <h1>AI Video Quality Survey</h1>
+      <p id="consent-text"></p>
+      <button id="start-btn" class="primary">Start</button>
+    </section>
+
+    <!-- Rating -->
+    <section id="rating" class="hidden">
+      <div class="progress"><div id="progress-bar"></div></div>
+      <p class="counter"><span id="counter"></span></p>
+      <p class="prompt">Requested action: “<span id="prompt-text"></span>”</p>
+
+      <div class="stage">
+        <figure class="cond">
+          <figcaption>Starting image</figcaption>
+          <img id="cond-image" alt="conditioning frame">
+        </figure>
+        <div class="videos">
+          <div class="vid-col">
+            <h2>Video A</h2>
+            <video id="video-a" controls autoplay muted loop playsinline></video>
+            <div class="sliders" id="sliders-a"></div>
+          </div>
+          <div class="vid-col">
+            <h2>Video B</h2>
+            <video id="video-b" controls autoplay muted loop playsinline></video>
+            <div class="sliders" id="sliders-b"></div>
+          </div>
+        </div>
+      </div>
+
+      <button id="next-btn" class="primary" disabled>Next</button>
+    </section>
+
+    <!-- Done -->
+    <section id="done" class="card hidden">
+      <h1>Thank you!</h1>
+      <p>Your ratings were recorded. You may close this tab, or
+         <a href="#" id="again">rate another set</a>.</p>
+    </section>
+
+    <section id="error" class="card hidden">
+      <h1>Something went wrong</h1>
+      <p id="error-text"></p>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

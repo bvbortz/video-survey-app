@@ -1,0 +1,48 @@
+:root {
+  --bg: #0f1115; --card: #181b22; --fg: #e8eaed; --muted: #9aa0a6;
+  --accent: #4f8cff; --border: #2a2f3a; --ok: #38b000;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font: 15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+}
+#app { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
+.hidden { display: none !important; }
+
+.card { background: var(--card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 28px; max-width: 640px; margin: 40px auto; }
+h1 { margin-top: 0; }
+h2 { font-size: 1rem; margin: 0 0 8px; }
+
+button.primary {
+  background: var(--accent); color: #fff; border: 0; border-radius: 8px;
+  padding: 12px 28px; font-size: 1rem; cursor: pointer; margin-top: 20px;
+}
+button.primary:disabled { background: #394253; color: var(--muted); cursor: not-allowed; }
+a { color: var(--accent); }
+
+.progress { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+#progress-bar { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+.counter { color: var(--muted); font-size: .85rem; margin: 8px 0 0; }
+.prompt { font-size: 1.1rem; margin: 12px 0 20px; }
+
+.stage { display: grid; grid-template-columns: 160px 1fr; gap: 20px; align-items: start; }
+.cond { margin: 0; }
+.cond figcaption { color: var(--muted); font-size: .8rem; margin-bottom: 6px; }
+.cond img { width: 100%; border-radius: 8px; border: 1px solid var(--border); }
+
+.videos { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.vid-col video { width: 100%; border-radius: 8px; background: #000; aspect-ratio: 16/10; }
+
+.sliders { margin-top: 12px; }
+.slider-row { margin: 10px 0; }
+.slider-row label { display: flex; justify-content: space-between; font-size: .85rem; }
+.slider-row label .val { color: var(--muted); font-variant-numeric: tabular-nums; }
+.slider-row label .val.set { color: var(--ok); font-weight: 600; }
+.slider-row input[type=range] { width: 100%; accent-color: var(--accent); }
+
+@media (max-width: 760px) {
+  .stage { grid-template-columns: 1fr; }
+  .videos { grid-template-columns: 1fr; }
+}
