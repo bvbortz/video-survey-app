@@ -25,24 +25,41 @@ async def _judged_counts(db) -> dict[str, int]:
     return counts
 
 
-def _balanced_take(reals: list[dict], n: int) -> list[dict]:
-    """Round-robin across arms, each arm ordered least-judged first."""
+def _round_robin(pool: list[dict], n: int, chosen: list[dict], used_prompts: set) -> None:
+    """Round-robin across arms (each least-judged first), skipping prompts already
+    used this session so the same prompt's shared clip never appears twice."""
     by_arm: dict[str, list[dict]] = {}
-    for p in reals:
+    for p in pool:
         by_arm.setdefault(p["arm"], []).append(p)
     for a in by_arm:
         by_arm[a].sort(key=lambda p: (p["_n"], random.random()))
     arms = list(by_arm)
     random.shuffle(arms)
     idx = {a: 0 for a in arms}
-    chosen: list[dict] = []
     while len(chosen) < n and any(idx[a] < len(by_arm[a]) for a in arms):
         for a in arms:
             if len(chosen) >= n:
                 break
-            if idx[a] < len(by_arm[a]):
-                chosen.append(by_arm[a][idx[a]])
+            while idx[a] < len(by_arm[a]) and by_arm[a][idx[a]]["prompt_id"] in used_prompts:
                 idx[a] += 1
+            if idx[a] < len(by_arm[a]):
+                p = by_arm[a][idx[a]]
+                idx[a] += 1
+                chosen.append(p)
+                used_prompts.add(p["prompt_id"])
+
+
+def _select(reals: list[dict], n: int, exclude_prompt_ids: set) -> list[dict]:
+    """Prefer prompts this browser hasn't seen; fall back to seen ones only if the
+    unseen pool can't fill the session (power users who've done many rounds)."""
+    unseen = [p for p in reals if p["prompt_id"] not in exclude_prompt_ids]
+    seen = [p for p in reals if p["prompt_id"] in exclude_prompt_ids]
+    chosen: list[dict] = []
+    used_prompts: set = set()
+    for pool in (unseen, seen):
+        if len(chosen) >= n:
+            break
+        _round_robin(pool, n, chosen, used_prompts)
     return chosen[:n]
 
 
@@ -54,14 +71,16 @@ def _make_item(pair: dict, kind: str) -> dict:
 
 
 async def build_session_items(
-    db, n_real: int = N_REAL, n_attention: int = N_ATTENTION, n_repeat: int = N_REPEAT
+    db, exclude_prompt_ids: set | None = None,
+    n_real: int = N_REAL, n_attention: int = N_ATTENTION, n_repeat: int = N_REPEAT
 ) -> list[dict]:
+    exclude = set(exclude_prompt_ids or ())
     counts = await _judged_counts(db)
 
     reals = [p async for p in db.pairs.find({"is_attention_check": {"$ne": True}})]
     for p in reals:
         p["_n"] = counts.get(p["pair_id"], 0)
-    chosen = _balanced_take(reals, n_real)
+    chosen = _select(reals, n_real, exclude)
 
     attn = [p async for p in db.pairs.find({"is_attention_check": True})]
     random.shuffle(attn)

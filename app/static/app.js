@@ -43,9 +43,23 @@ function fail(msg) {
   show("error");
 }
 
+const SEEN_KEY = "survey_seen_prompts";
+function getSeen() {
+  try { return JSON.parse(localStorage.getItem(SEEN_KEY) || "[]"); }
+  catch { return []; }
+}
+function markSeen(promptId) {
+  if (!promptId) return;
+  const set = new Set(getSeen());
+  set.add(promptId);
+  try { localStorage.setItem(SEEN_KEY, JSON.stringify([...set])); } catch {}
+}
+
 async function loadSession() {
   try {
-    const r = await fetch("/api/session");
+    const seen = getSeen();
+    const q = seen.length ? "?seen=" + encodeURIComponent(seen.join(",")) : "";
+    const r = await fetch("/api/session" + q);
     if (!r.ok) throw new Error("session " + r.status);
     SESSION = await r.json();
     if (!SESSION.items.length) return fail("No videos are available yet.");
@@ -187,6 +201,7 @@ async function submit() {
     setBusy(false);
     return fail("Could not save your rating. " + e.message);
   }
+  markSeen(it.prompt_id);   // remember across rounds so it isn't shown again
   setBusy(false);
   idx += 1;
   if (idx >= SESSION.items.length) {

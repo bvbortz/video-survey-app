@@ -73,9 +73,11 @@ async def health():
 
 
 @app.get("/api/session")
-async def create_session():
+async def create_session(seen: str = ""):
     db = dbmod.get_db()
-    items = await build_session_items(db)
+    # `seen` = comma-separated prompt_ids this browser has already rated (localStorage)
+    exclude = {s for s in seen.split(",") if s}
+    items = await build_session_items(db, exclude_prompt_ids=exclude)
     if not items:
         raise HTTPException(503, "no pairs loaded")
 
@@ -99,6 +101,7 @@ async def create_session():
         a_leg, b_leg = it["order"][0], it["order"][1]
         client_items.append({
             "index": i,
+            "prompt_id": it["pair"].get("prompt_id"),   # for cross-round dedup (not a leg id)
             "prompt_text": it["pair"].get("prompt_text"),
             "image_url": _video_url(it["pair"]["image_file"]) if it["pair"].get("image_file") else None,
             "video_a": _video_url(legs[a_leg]["file"]),

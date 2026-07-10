@@ -50,8 +50,10 @@ def test_session_and_response(client):
     s = c.get("/api/session").json()
     assert s["rubric"] and s["items"]
     # leg identity must not leak to the client: items expose only opaque A/B slots
+    # (prompt_id is a non-leg hash, used for cross-round dedup)
     for it in s["items"]:
-        assert set(it) == {"index", "prompt_text", "image_url", "video_a", "video_b"}
+        assert set(it) == {"index", "prompt_id", "prompt_text",
+                           "image_url", "video_a", "video_b"}
     it = s["items"][0]
     assert it["video_a"].startswith("https://cdn.example/videos/")
 
@@ -71,6 +73,14 @@ def test_session_and_response(client):
     assert set(doc["ratings"]) <= {"short", "base", "finetuned"}
     assert len(doc["ratings"]) == 2
     assert doc["flag_impossible"] is True
+
+
+def test_seen_prompts_excluded(client):
+    c, _ = client
+    # 8 prompts total; excluding 2 leaves 6 unseen to fill a 6-real session
+    s = c.get("/api/session?seen=p00,p01").json()
+    pids = {it["prompt_id"] for it in s["items"]}
+    assert "p00" not in pids and "p01" not in pids
 
 
 def test_bad_score_rejected(client):
