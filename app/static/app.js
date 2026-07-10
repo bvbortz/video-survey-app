@@ -1,12 +1,32 @@
 "use strict";
 
-const LABELS = {
-  prompt_adherence: "Prompt adherence",
-  motion_quality: "Motion quality",
-  object_consistency: "Object consistency",
-  visual_quality: "Visual quality",
-  physical_realism: "Physical realism",
+// Category tooltips are grounded in the automatic evaluator's own rubric
+// (react-agent/config.yaml: prompt_adherence / motion_quality / visual_quality /
+// consistency analyses + the morphing / artifact / physics scoring criteria).
+const CATS = {
+  prompt_adherence: {
+    label: "Prompt adherence",
+    tip: "How well the video does what the prompt asked for — the right objects, action and details actually appear and match the request.",
+  },
+  motion_quality: {
+    label: "Motion quality",
+    tip: "How natural and smooth the movement is — steady, believable motion with no jitter, stutter, flicker or unnatural speed.",
+  },
+  object_consistency: {
+    label: "Object consistency",
+    tip: "Whether objects keep a stable identity and shape throughout — no morphing, splitting, disappearing/reappearing, or drifting into something else.",
+  },
+  visual_quality: {
+    label: "Visual quality",
+    tip: "Overall image quality of the frames — sharp and clean, free of blur, distortion, warping or compression artifacts.",
+  },
+  physical_realism: {
+    label: "Physical realism",
+    tip: "Whether motion and interactions obey real-world physics — believable gravity, contact and movement, with no impossible or broken physics.",
+  },
 };
+const SCALE_LO = "0 = poor";
+const SCALE_HI = "10 = perfect";
 
 let SESSION = null;   // {session_id, rubric, items:[...]}
 let idx = 0;          // current item index
@@ -38,12 +58,19 @@ async function loadSession() {
 function buildSliders(container, side) {
   container.innerHTML = "";
   SESSION.rubric.forEach((cat) => {
+    const c = CATS[cat] || { label: cat, tip: "" };
     const row = document.createElement("div");
     row.className = "slider-row";
+    row.dataset.cat = cat;
     row.innerHTML =
-      `<label>${LABELS[cat] || cat}<span class="val" id="v_${side}_${cat}">–</span></label>` +
+      `<div class="cat-head">` +
+        `<span class="cat-label">${c.label}</span>` +
+        `<span class="info" tabindex="0">ⓘ<span class="tip">${c.tip}</span></span>` +
+        `<span class="val" id="v_${side}_${cat}">–</span>` +
+      `</div>` +
       `<input type="range" min="0" max="10" step="1" value="5" ` +
-      `data-side="${side}" data-cat="${cat}" data-touched="0">`;
+        `data-side="${side}" data-cat="${cat}" data-touched="0">` +
+      `<div class="scale"><span>${SCALE_LO}</span><span>${SCALE_HI}</span></div>`;
     container.appendChild(row);
   });
 }
