@@ -31,7 +31,7 @@ const SCALE_HI = "10 = perfect";
 let SESSION = null;   // {session_id, rubric, items:[...]}
 let idx = 0;          // current item index
 let shownAt = 0;      // timestamp for elapsed_ms of current item
-let answers = [];     // answers[i] = {a:{cat:n}, b:{cat:n}, touched:{}, impossible}
+let answers = [];     // answers[i] = {a:{cat:n}, b:{cat:n}, touched:{}, issue, note}
 
 const $ = (id) => document.getElementById(id);
 const show = (id) => $(id).classList.remove("hidden");
@@ -104,6 +104,10 @@ function onSlider(e) {
   $("next-btn").disabled = !allTouched();
 }
 
+function toggleNote() {
+  $("flag-note").classList.toggle("hidden", !$("flag-issue").checked);
+}
+
 // read the current on-screen state into answers[idx]
 function captureCurrent() {
   const touched = {};
@@ -112,7 +116,8 @@ function captureCurrent() {
   });
   answers[idx] = {
     a: collect("a"), b: collect("b"), touched,
-    impossible: $("flag-impossible").checked,
+    issue: $("flag-issue").checked,
+    note: $("flag-note").value.trim(),
   };
 }
 
@@ -130,7 +135,9 @@ function restore(i) {
       v.classList.add("set");
     }
   });
-  $("flag-impossible").checked = ans.impossible;
+  $("flag-issue").checked = ans.issue;
+  $("flag-note").value = ans.note || "";
+  toggleNote();
 }
 
 function renderItem() {
@@ -152,7 +159,9 @@ function renderItem() {
     .forEach((s) => s.addEventListener("input", onSlider));
 
   // reset flag UI, then restore any prior answer for this item
-  $("flag-impossible").checked = false;
+  $("flag-issue").checked = false;
+  $("flag-note").value = "";
+  toggleNote();
   restore(idx);
 
   $("back-btn").classList.toggle("hidden", idx === 0);
@@ -193,7 +202,8 @@ async function submit() {
         video_a: ans.a,
         video_b: ans.b,
         elapsed_ms: Date.now() - shownAt,
-        flag_impossible: ans.impossible,
+        flag_issue: ans.issue,
+        note: ans.note,
       }),
     });
     if (!r.ok) throw new Error("response " + r.status);
@@ -220,6 +230,7 @@ function goBack() {
   renderItem();
 }
 
+$("flag-issue").addEventListener("change", toggleNote);
 $("start-btn").addEventListener("click", () => {
   hide("consent");
   show("rating");

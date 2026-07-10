@@ -62,7 +62,7 @@ def test_session_and_response(client):
         "session_id": s["session_id"], "index": it["index"],
         "video_a": scores, "video_b": {k: 3 for k in s["rubric"]},
         "elapsed_ms": 1234,
-        "flag_impossible": True,
+        "flag_issue": True, "note": "NSFW content in video B",
     })
     assert r.status_code == 200
 
@@ -72,7 +72,8 @@ def test_session_and_response(client):
     )
     assert set(doc["ratings"]) <= {"short", "base", "finetuned"}
     assert len(doc["ratings"]) == 2
-    assert doc["flag_impossible"] is True
+    assert doc["flag_issue"] is True
+    assert doc["note"] == "NSFW content in video B"
 
 
 def test_seen_pair_excluded_next_round(client):

@@ -31,6 +31,11 @@ a { color: var(--accent); }
 .flag-row { margin: 22px 0 4px; }
 .flag-label { display: flex; align-items: flex-start; gap: 8px; font-size: .9rem; color: var(--fg); cursor: pointer; }
 .flag-label input { margin-top: 3px; accent-color: var(--accent); }
+#flag-note {
+  display: block; width: 100%; margin-top: 8px; padding: 8px 10px;
+  background: #0b0d11; color: var(--fg); border: 1px solid var(--border);
+  border-radius: 8px; font: inherit; resize: vertical;
+}
 
 /* nav + saving spinner */
 .nav { display: flex; align-items: center; gap: 12px; margin-top: 18px; }

@@ -47,9 +47,12 @@
 
       <div class="flag-row">
         <label class="flag-label">
-          <input type="checkbox" id="flag-impossible">
-          The requested action is impossible or doesn’t match the starting image
+          <input type="checkbox" id="flag-issue">
+          There’s a problem with this pair — e.g. the prompt is impossible or doesn’t
+          match the starting image, contains NSFW/inappropriate content, or anything else
         </label>
+        <textarea id="flag-note" class="hidden" rows="2" maxlength="1000"
+          placeholder="Please describe what’s wrong (e.g. the action can’t happen given this image, NSFW content, …)"></textarea>
       </div>
 
       <div class="nav">

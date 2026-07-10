@@ -137,8 +137,10 @@ class ResponseIn(BaseModel):
     video_a: Scores
     video_b: Scores
     elapsed_ms: int = Field(ge=0)
-    # rater flags the prompt as impossible / not matching the starting image
-    flag_impossible: bool = False
+    # rater flags a problem with this pair (impossible/mismatched prompt, NSFW, other);
+    # `note` describes what's wrong
+    flag_issue: bool = False
+    note: str = Field(default="", max_length=1000)
 
 
 @app.post("/api/response")
@@ -168,7 +170,8 @@ async def submit_response(body: ResponseIn):
                 a_leg: body.video_a.model_dump(),
                 b_leg: body.video_b.model_dump(),
             },
-            "flag_impossible": body.flag_impossible,
+            "flag_issue": body.flag_issue,
+            "note": body.note.strip(),
         }},
         upsert=True,
     )
@@ -193,7 +196,7 @@ async def admin(request: Request):
     total_sessions = await db.sessions.count_documents({})
     total_responses = await db.responses.count_documents({})
     total_pairs = await db.pairs.count_documents({"is_attention_check": {"$ne": True}})
-    flagged = await db.responses.count_documents({"flag_impossible": True})
+    flagged = await db.responses.count_documents({"flag_issue": True})
 
     per_arm = {}
     cur = db.responses.aggregate([
@@ -212,7 +215,7 @@ async def admin(request: Request):
         "sessions": total_sessions,
         "responses": total_responses,
         "coverage": coverage,
-        "flagged_impossible": flagged,
+        "flagged_issue": flagged,
         "responses_per_arm": per_arm,
     }
 
