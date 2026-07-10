@@ -30,7 +30,8 @@ const SCALE_HI = "10 = perfect";
 
 let SESSION = null;   // {session_id, rubric, items:[...]}
 let idx = 0;          // current item index
-let shownAt = 0;      // timestamp for elapsed_ms
+let shownAt = 0;      // timestamp for elapsed_ms of current item
+let answers = [];     // answers[i] = {a:{cat:n}, b:{cat:n}, touched:{}, impossible}
 
 const $ = (id) => document.getElementById(id);
 const show = (id) => $(id).classList.remove("hidden");
@@ -89,6 +90,35 @@ function onSlider(e) {
   $("next-btn").disabled = !allTouched();
 }
 
+// read the current on-screen state into answers[idx]
+function captureCurrent() {
+  const touched = {};
+  document.querySelectorAll("#rating input[type=range]").forEach((s) => {
+    touched[`${s.dataset.side}_${s.dataset.cat}`] = s.dataset.touched === "1";
+  });
+  answers[idx] = {
+    a: collect("a"), b: collect("b"), touched,
+    impossible: $("flag-impossible").checked,
+  };
+}
+
+// restore a previously answered item back onto the freshly-built sliders
+function restore(i) {
+  const ans = answers[i];
+  if (!ans) return;
+  document.querySelectorAll("#rating input[type=range]").forEach((s) => {
+    const side = s.dataset.side, cat = s.dataset.cat;
+    s.value = ans[side][cat];
+    if (ans.touched[`${side}_${cat}`]) {
+      s.dataset.touched = "1";
+      const v = $(`v_${side}_${cat}`);
+      v.textContent = s.value;
+      v.classList.add("set");
+    }
+  });
+  $("flag-impossible").checked = ans.impossible;
+}
+
 function renderItem() {
   const it = SESSION.items[idx];
   $("prompt-text").textContent = it.prompt_text || "";
@@ -107,7 +137,14 @@ function renderItem() {
   document.querySelectorAll("#rating input[type=range]")
     .forEach((s) => s.addEventListener("input", onSlider));
 
-  $("next-btn").disabled = true;
+  // reset flag UI, then restore any prior answer for this item
+  $("flag-impossible").checked = false;
+  restore(idx);
+
+  $("back-btn").classList.toggle("hidden", idx === 0);
+  $("next-btn").textContent = idx === SESSION.items.length - 1 ? "Finish" : "Next";
+  $("next-btn").disabled = !allTouched();
+  window.scrollTo({ top: 0, behavior: "smooth" });
   shownAt = Date.now();
 }
 
@@ -121,9 +158,17 @@ function collect(side) {
   return out;
 }
 
+function setBusy(busy) {
+  $("saving").classList.toggle("hidden", !busy);
+  $("next-btn").disabled = busy || !allTouched();
+  $("back-btn").disabled = busy;
+}
+
 async function submit() {
+  captureCurrent();
   const it = SESSION.items[idx];
-  $("next-btn").disabled = true;
+  const ans = answers[idx];
+  setBusy(true);
   try {
     const r = await fetch("/api/response", {
       method: "POST",
@@ -131,15 +176,18 @@ async function submit() {
       body: JSON.stringify({
         session_id: SESSION.session_id,
         index: it.index,
-        video_a: collect("a"),
-        video_b: collect("b"),
+        video_a: ans.a,
+        video_b: ans.b,
         elapsed_ms: Date.now() - shownAt,
+        flag_impossible: ans.impossible,
       }),
     });
     if (!r.ok) throw new Error("response " + r.status);
   } catch (e) {
+    setBusy(false);
     return fail("Could not save your rating. " + e.message);
   }
+  setBusy(false);
   idx += 1;
   if (idx >= SESSION.items.length) {
     $("progress-bar").style.width = "100%";
@@ -150,12 +198,20 @@ async function submit() {
   }
 }
 
+function goBack() {
+  if (idx === 0) return;
+  captureCurrent();     // keep whatever is on screen
+  idx -= 1;
+  renderItem();
+}
+
 $("start-btn").addEventListener("click", () => {
   hide("consent");
   show("rating");
   renderItem();
 });
 $("next-btn").addEventListener("click", submit);
+$("back-btn").addEventListener("click", goBack);
 $("again").addEventListener("click", (e) => { e.preventDefault(); location.reload(); });
 
 loadSession();

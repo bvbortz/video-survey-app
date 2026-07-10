@@ -12,6 +12,10 @@
     <section id="consent" class="card hidden">
       <h1>AI Video Quality Survey</h1>
       <p id="consent-text"></p>
+      <p class="setup-note">ℹ️ The <strong>starting image is a real photo</strong>.
+        The prompt and both videos (A and B) are <strong>AI-generated</strong> — so a
+        prompt may occasionally describe something that can’t happen given the image.
+        If that occurs, rate what you actually see and tick the box on that screen.</p>
       <button id="start-btn" class="primary">Start</button>
     </section>
 
@@ -20,6 +24,7 @@
       <div class="progress"><div id="progress-bar"></div></div>
       <p class="counter"><span id="counter"></span></p>
       <p class="prompt">Requested action: “<span id="prompt-text"></span>”</p>
+      <p class="hint">Starting image = real photo · prompt &amp; both videos = AI-generated</p>
 
       <div class="stage">
         <figure class="cond">
@@ -40,7 +45,18 @@
         </div>
       </div>
 
-      <button id="next-btn" class="primary" disabled>Next</button>
+      <div class="flag-row">
+        <label class="flag-label">
+          <input type="checkbox" id="flag-impossible">
+          The requested action is impossible or doesn’t match the starting image
+        </label>
+      </div>
+
+      <div class="nav">
+        <button id="back-btn" class="secondary">Back</button>
+        <button id="next-btn" class="primary" disabled>Next</button>
+        <span id="saving" class="saving hidden"><span class="spinner"></span> Saving…</span>
+      </div>
     </section>
 
     <!-- Done -->

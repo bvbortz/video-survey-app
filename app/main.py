@@ -134,6 +134,8 @@ class ResponseIn(BaseModel):
     video_a: Scores
     video_b: Scores
     elapsed_ms: int = Field(ge=0)
+    # rater flags the prompt as impossible / not matching the starting image
+    flag_impossible: bool = False
 
 
 @app.post("/api/response")
@@ -163,6 +165,7 @@ async def submit_response(body: ResponseIn):
                 a_leg: body.video_a.model_dump(),
                 b_leg: body.video_b.model_dump(),
             },
+            "flag_impossible": body.flag_impossible,
         }},
         upsert=True,
     )
@@ -187,6 +190,7 @@ async def admin(request: Request):
     total_sessions = await db.sessions.count_documents({})
     total_responses = await db.responses.count_documents({})
     total_pairs = await db.pairs.count_documents({"is_attention_check": {"$ne": True}})
+    flagged = await db.responses.count_documents({"flag_impossible": True})
 
     per_arm = {}
     cur = db.responses.aggregate([
@@ -205,6 +209,7 @@ async def admin(request: Request):
         "sessions": total_sessions,
         "responses": total_responses,
         "coverage": coverage,
+        "flagged_impossible": flagged,
         "responses_per_arm": per_arm,
     }
 

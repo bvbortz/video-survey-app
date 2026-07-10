@@ -60,6 +60,7 @@ def test_session_and_response(client):
         "session_id": s["session_id"], "index": it["index"],
         "video_a": scores, "video_b": {k: 3 for k in s["rubric"]},
         "elapsed_ms": 1234,
+        "flag_impossible": True,
     })
     assert r.status_code == 200
 
@@ -69,6 +70,7 @@ def test_session_and_response(client):
     )
     assert set(doc["ratings"]) <= {"short", "base", "finetuned"}
     assert len(doc["ratings"]) == 2
+    assert doc["flag_impossible"] is True
 
 
 def test_bad_score_rejected(client):

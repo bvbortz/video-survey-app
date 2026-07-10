@@ -17,15 +17,43 @@ h2 { font-size: 1rem; margin: 0 0 8px; }
 
 button.primary {
   background: var(--accent); color: #fff; border: 0; border-radius: 8px;
-  padding: 12px 28px; font-size: 1rem; cursor: pointer; margin-top: 20px;
+  padding: 12px 28px; font-size: 1rem; cursor: pointer;
 }
 button.primary:disabled { background: #394253; color: var(--muted); cursor: not-allowed; }
+button.secondary {
+  background: transparent; color: var(--fg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 12px 22px; font-size: 1rem; cursor: pointer;
+}
+button.secondary:disabled { color: var(--muted); cursor: not-allowed; }
 a { color: var(--accent); }
+
+/* impossible-prompt flag */
+.flag-row { margin: 22px 0 4px; }
+.flag-label { display: flex; align-items: flex-start; gap: 8px; font-size: .9rem; color: var(--fg); cursor: pointer; }
+.flag-label input { margin-top: 3px; accent-color: var(--accent); }
+
+/* nav + saving spinner */
+.nav { display: flex; align-items: center; gap: 12px; margin-top: 18px; }
+.nav .primary { margin-inline-start: auto; }
+.saving { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: .9rem; }
+.spinner {
+  width: 15px; height: 15px; border: 2px solid var(--border);
+  border-top-color: var(--accent); border-radius: 50%;
+  display: inline-block; animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 .progress { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
 #progress-bar { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
 .counter { color: var(--muted); font-size: .85rem; margin: 8px 0 0; }
-.prompt { font-size: 1.1rem; margin: 12px 0 20px; }
+.prompt { font-size: 1.1rem; margin: 12px 0 4px; }
+.hint { color: var(--muted); font-size: .78rem; margin: 0 0 18px; }
+.setup-note {
+  background: #12161d; border: 1px solid var(--border); border-radius: 8px;
+  padding: 12px 14px; font-size: .9rem; color: var(--muted);
+  margin-top: 16px; line-height: 1.5;
+}
+.setup-note strong { color: var(--fg); }
 
 .stage { display: grid; grid-template-columns: 160px 1fr; gap: 20px; align-items: start; }
 .cond { margin: 0; }
