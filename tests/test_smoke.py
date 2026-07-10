@@ -50,9 +50,9 @@ def test_session_and_response(client):
     s = c.get("/api/session").json()
     assert s["rubric"] and s["items"]
     # leg identity must not leak to the client: items expose only opaque A/B slots
-    # (prompt_id is a non-leg hash, used for cross-round dedup)
+    # (token is an opaque per-pair hash, used for cross-round dedup)
     for it in s["items"]:
-        assert set(it) == {"index", "prompt_id", "prompt_text",
+        assert set(it) == {"index", "token", "prompt_text",
                            "image_url", "video_a", "video_b"}
     it = s["items"][0]
     assert it["video_a"].startswith("https://cdn.example/videos/")
@@ -75,12 +75,43 @@ def test_session_and_response(client):
     assert doc["flag_impossible"] is True
 
 
-def test_seen_prompts_excluded(client):
+def test_seen_pair_excluded_next_round(client):
     c, _ = client
-    # 8 prompts total; excluding 2 leaves 6 unseen to fill a 6-real session
-    s = c.get("/api/session?seen=p00,p01").json()
-    pids = {it["prompt_id"] for it in s["items"]}
-    assert "p00" not in pids and "p01" not in pids
+    # rate a pair, then a new session with its token must not show it again
+    s1 = c.get("/api/session").json()
+    tok = s1["items"][0]["token"]
+    s2 = c.get(f"/api/session?seen={tok}").json()
+    assert tok not in {it["token"] for it in s2["items"]}
+
+
+def test_within_session_clip_dedup():
+    from app.assignment import build_session_items, _clips
+
+    db = AsyncMongoMockClient()["survey"]
+
+    def pair(pid, arm, c1, c2):
+        other = arm.split("_vs_")[1]
+        return {"pair_id": pid, "generator": pid.split("_")[0], "arm": arm,
+                "prompt_id": "P", "is_attention_check": False,
+                "legs": [{"leg": "short", "clip_id": c1, "file": c1 + ".mp4"},
+                         {"leg": other, "clip_id": c2, "file": c2 + ".mp4"}]}
+
+    # same prompt: ltx2's two arms share ltx2_short; framepack has its own clips
+    pairs = [
+        pair("ltx2_a", "short_vs_base", "ltx2_short", "ltx2_base"),
+        pair("ltx2_b", "short_vs_finetuned", "ltx2_short", "ltx2_ft"),
+        pair("fp_a", "short_vs_base", "fp_short", "fp_base"),
+    ]
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(db.pairs.insert_many(pairs))
+    items = loop.run_until_complete(build_session_items(db, n_real=3, n_attention=0))
+
+    ids = {it["pair_id"] for it in items}
+    # the two ltx2 arms share a clip -> never both in one session
+    assert not ({"ltx2_a", "ltx2_b"} <= ids)
+    # no clip appears twice in a session
+    all_clips = [c for it in items for c in _clips(it["pair"])]
+    assert len(all_clips) == len(set(all_clips))
 
 
 def test_bad_score_rejected(client):

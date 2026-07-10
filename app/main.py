@@ -25,7 +25,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
 from . import db as dbmod
-from .assignment import build_session_items
+from .assignment import build_session_items, pair_token
 
 RUBRIC = [
     "prompt_adherence", "motion_quality", "object_consistency",
@@ -75,9 +75,9 @@ async def health():
 @app.get("/api/session")
 async def create_session(seen: str = ""):
     db = dbmod.get_db()
-    # `seen` = comma-separated prompt_ids this browser has already rated (localStorage)
-    exclude = {s for s in seen.split(",") if s}
-    items = await build_session_items(db, exclude_prompt_ids=exclude)
+    # `seen` = comma-separated opaque pair tokens this browser has already rated
+    seen_tokens = {s for s in seen.split(",") if s}
+    items = await build_session_items(db, seen_tokens=seen_tokens)
     if not items:
         raise HTTPException(503, "no pairs loaded")
 
@@ -101,7 +101,7 @@ async def create_session(seen: str = ""):
         a_leg, b_leg = it["order"][0], it["order"][1]
         client_items.append({
             "index": i,
-            "prompt_id": it["pair"].get("prompt_id"),   # for cross-round dedup (not a leg id)
+            "token": pair_token(it["pair"]["pair_id"]),  # opaque, for cross-round dedup
             "prompt_text": it["pair"].get("prompt_text"),
             "image_url": _video_url(it["pair"]["image_file"]) if it["pair"].get("image_file") else None,
             "video_a": _video_url(legs[a_leg]["file"]),

@@ -43,15 +43,15 @@ function fail(msg) {
   show("error");
 }
 
-const SEEN_KEY = "survey_seen_prompts";
+const SEEN_KEY = "survey_seen_tokens";
 function getSeen() {
   try { return JSON.parse(localStorage.getItem(SEEN_KEY) || "[]"); }
   catch { return []; }
 }
-function markSeen(promptId) {
-  if (!promptId) return;
+function markSeen(token) {
+  if (!token) return;
   const set = new Set(getSeen());
-  set.add(promptId);
+  set.add(token);
   try { localStorage.setItem(SEEN_KEY, JSON.stringify([...set])); } catch {}
 }
 
@@ -201,7 +201,7 @@ async function submit() {
     setBusy(false);
     return fail("Could not save your rating. " + e.message);
   }
-  markSeen(it.prompt_id);   // remember across rounds so it isn't shown again
+  markSeen(it.token);   // remember across rounds so its clips aren't shown again
   setBusy(false);
   idx += 1;
   if (idx >= SESSION.items.length) {
