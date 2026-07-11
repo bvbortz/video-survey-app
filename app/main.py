@@ -1,12 +1,13 @@
 """FastAPI survey app — MOS video-rating study.
 
 The rater sees a pair of videos (same prompt, two conditions) and grades EACH video
-on the 5 evaluator categories, 0-10. See ../user-survey/PLAN.md for the design.
+on the 6 evaluator categories, 0-10 (scene_fidelity added 2026-07-11; earlier
+responses lack it — analysis imputes 10). See ../user-survey/PLAN.md for the design.
 
 Endpoints:
   GET  /api/health              liveness
   GET  /api/session             new session + assigned items (A/B pre-randomised)
-  POST /api/response            store the 2x5 scores for one item
+  POST /api/response            store the 2x6 scores for one item
   GET  /admin                   cookie-gated coverage dashboard
   GET  /admin/export            cookie-gated full response dump (JSON)
   GET  /                        static one-page frontend
@@ -18,6 +19,7 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -28,13 +30,13 @@ from . import db as dbmod
 from .assignment import build_session_items, pair_token
 
 RUBRIC = [
-    "prompt_adherence", "motion_quality", "object_consistency",
+    "prompt_adherence", "scene_fidelity", "motion_quality", "object_consistency",
     "visual_quality", "physical_realism",
 ]
 
 CONSENT_TEXT = (
     "This is an anonymous academic research survey on AI-generated video quality. "
-    "You will watch pairs of short videos and rate each one on five aspects. "
+    "You will watch pairs of short videos and rate each one on six aspects. "
     "It takes about 8-10 minutes. No personal data is collected (only an anonymous "
     "session id). Participation is voluntary and you may stop at any time. "
     "By pressing Start you consent to participate."
@@ -118,6 +120,9 @@ async def create_session(seen: str = ""):
 
 class Scores(BaseModel):
     prompt_adherence: int
+    # Added 2026-07-11; Optional so clients that loaded the page before the deploy
+    # can still submit. Analysis treats a missing value as 10 (perfect fidelity).
+    scene_fidelity: Optional[int] = None
     motion_quality: int
     object_consistency: int
     visual_quality: int
@@ -125,8 +130,8 @@ class Scores(BaseModel):
 
     @field_validator("*")
     @classmethod
-    def in_range(cls, v: int) -> int:
-        if not (0 <= v <= 10):
+    def in_range(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and not (0 <= v <= 10):
             raise ValueError("score must be 0-10")
         return v
 
@@ -167,8 +172,10 @@ async def submit_response(body: ResponseIn):
             "created_at": _now(),
             "elapsed_ms": body.elapsed_ms,
             "ratings": {                       # stored resolved to leg identity
-                a_leg: body.video_a.model_dump(),
-                b_leg: body.video_b.model_dump(),
+                # exclude_none: a pre-2026-07-11 cached client may omit scene_fidelity;
+                # analysis treats the absent key as 10.
+                a_leg: body.video_a.model_dump(exclude_none=True),
+                b_leg: body.video_b.model_dump(exclude_none=True),
             },
             "flag_issue": body.flag_issue,
             "note": body.note.strip(),

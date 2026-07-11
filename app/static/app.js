@@ -8,6 +8,10 @@ const CATS = {
     label: "Prompt adherence",
     tip: "How well the video does what the prompt asked for — the right objects, action and details actually appear and match the request.",
   },
+  scene_fidelity: {
+    label: "Scene fidelity",
+    tip: "How faithfully the video stays true to the starting image — same scene, colours, camera viewpoint and main subject; it should not morph or drift into a different scene.",
+  },
   motion_quality: {
     label: "Motion quality",
     tip: "How natural and smooth the movement is — steady, believable motion with no jitter, stutter, flicker or unnatural speed.",
