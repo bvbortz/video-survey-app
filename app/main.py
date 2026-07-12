@@ -24,7 +24,7 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from . import db as dbmod
 from .assignment import build_session_items, pair_token
@@ -118,15 +118,18 @@ async def create_session(seen: str = ""):
     }
 
 
+# All fields Optional: a FLAGGED pair may be submitted with partial (or no)
+# ratings — a missing key means "not rated", never a default. Completeness for
+# unflagged pairs is enforced in ResponseIn.full_scores_unless_flagged.
+# (scene_fidelity added 2026-07-11 and additionally exempt for pre-deploy clients;
+# analysis imputes 10 for it on UNFLAGGED responses only.)
 class Scores(BaseModel):
-    prompt_adherence: int
-    # Added 2026-07-11; Optional so clients that loaded the page before the deploy
-    # can still submit. Analysis treats a missing value as 10 (perfect fidelity).
+    prompt_adherence: Optional[int] = None
     scene_fidelity: Optional[int] = None
-    motion_quality: int
-    object_consistency: int
-    visual_quality: int
-    physical_realism: int
+    motion_quality: Optional[int] = None
+    object_consistency: Optional[int] = None
+    visual_quality: Optional[int] = None
+    physical_realism: Optional[int] = None
 
     @field_validator("*")
     @classmethod
@@ -146,6 +149,21 @@ class ResponseIn(BaseModel):
     # `note` describes what's wrong
     flag_issue: bool = False
     note: str = Field(default="", max_length=1000)
+
+    # Unflagged responses must be complete (scene_fidelity exempt: pre-2026-07-11
+    # cached clients don't have that slider). Flagged responses may be partial.
+    @model_validator(mode="after")
+    def full_scores_unless_flagged(self):
+        if not self.flag_issue:
+            required = [d for d in RUBRIC if d != "scene_fidelity"]
+            for label, scores in (("video_a", self.video_a), ("video_b", self.video_b)):
+                missing = [d for d in required if getattr(scores, d) is None]
+                if missing:
+                    raise ValueError(
+                        f"{label} is missing scores {missing}; "
+                        "only flagged pairs may be submitted with partial ratings"
+                    )
+        return self
 
 
 @app.post("/api/response")

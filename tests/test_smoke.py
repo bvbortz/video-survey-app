@@ -126,6 +126,51 @@ def test_bad_score_rejected(client):
     assert r.status_code == 422
 
 
+def test_flagged_pair_may_be_partial(client):
+    c, db = client
+    s = c.get("/api/session").json()
+    it = s["items"][0]
+    # rater flagged the pair after touching only one slider on one video
+    r = c.post("/api/response", json={
+        "session_id": s["session_id"], "index": it["index"],
+        "video_a": {"prompt_adherence": 2}, "video_b": {},
+        "elapsed_ms": 5, "flag_issue": True, "note": "prompt impossible for this image",
+    })
+    assert r.status_code == 200
+    doc = asyncio.get_event_loop().run_until_complete(
+        db.responses.find_one({"session_id": s["session_id"], "index": it["index"]})
+    )
+    assert doc["flag_issue"] is True
+    assert doc["note"] == "prompt impossible for this image"
+    # only the touched slider was stored; missing keys mean "not rated"
+    rated, unrated = sorted(doc["ratings"].values(), key=len, reverse=True)
+    assert rated == {"prompt_adherence": 2}
+    assert unrated == {}
+
+
+def test_unflagged_partial_rejected(client):
+    c, _ = client
+    s = c.get("/api/session").json()
+    r = c.post("/api/response", json={
+        "session_id": s["session_id"], "index": 0,
+        "video_a": {"prompt_adherence": 2}, "video_b": {},
+        "elapsed_ms": 5, "flag_issue": False,
+    })
+    assert r.status_code == 422
+
+
+def test_unflagged_missing_scene_fidelity_ok(client):
+    # pre-2026-07-11 cached clients submit without the scene_fidelity slider
+    c, _ = client
+    s = c.get("/api/session").json()
+    legacy = {k: 7 for k in s["rubric"] if k != "scene_fidelity"}
+    r = c.post("/api/response", json={
+        "session_id": s["session_id"], "index": 0,
+        "video_a": legacy, "video_b": legacy, "elapsed_ms": 9,
+    })
+    assert r.status_code == 200
+
+
 def test_admin_gate(client):
     c, _ = client
     assert c.get("/admin").status_code == 401

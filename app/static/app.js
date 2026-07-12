@@ -99,13 +99,25 @@ function allTouched() {
     .every((s) => s.dataset.touched === "1");
 }
 
+// A flagged pair may be submitted with partial (or no) ratings — the flag + note
+// are the signal; untouched sliders are simply not sent.
+function canProceed() {
+  return allTouched() || $("flag-issue").checked;
+}
+
+function updateNav() {
+  const ok = canProceed();
+  $("next-btn").disabled = !ok;
+  $("next-hint").classList.toggle("hidden", ok);
+}
+
 function onSlider(e) {
   const s = e.target;
   s.dataset.touched = "1";
   const v = $(`v_${s.dataset.side}_${s.dataset.cat}`);
   v.textContent = s.value;
   v.classList.add("set");
-  $("next-btn").disabled = !allTouched();
+  updateNav();
 }
 
 function toggleNote() {
@@ -131,7 +143,7 @@ function restore(i) {
   if (!ans) return;
   document.querySelectorAll("#rating input[type=range]").forEach((s) => {
     const side = s.dataset.side, cat = s.dataset.cat;
-    s.value = ans[side][cat];
+    if (ans[side][cat] !== undefined) s.value = ans[side][cat];
     if (ans.touched[`${side}_${cat}`]) {
       s.dataset.touched = "1";
       const v = $(`v_${side}_${cat}`);
@@ -170,24 +182,25 @@ function renderItem() {
 
   $("back-btn").classList.toggle("hidden", idx === 0);
   $("next-btn").textContent = idx === SESSION.items.length - 1 ? "Finish" : "Next";
-  $("next-btn").disabled = !allTouched();
+  updateNav();
   window.scrollTo({ top: 0, behavior: "smooth" });
   shownAt = Date.now();
 }
 
+// Only sliders the rater actually moved are collected: an untouched slider means
+// "not rated" (possible only on flagged pairs), never a default value.
 function collect(side) {
   const out = {};
   SESSION.rubric.forEach((cat) => {
-    out[cat] = Number(
-      document.querySelector(`input[data-side="${side}"][data-cat="${cat}"]`).value
-    );
+    const s = document.querySelector(`input[data-side="${side}"][data-cat="${cat}"]`);
+    if (s.dataset.touched === "1") out[cat] = Number(s.value);
   });
   return out;
 }
 
 function setBusy(busy) {
   $("saving").classList.toggle("hidden", !busy);
-  $("next-btn").disabled = busy || !allTouched();
+  $("next-btn").disabled = busy || !canProceed();
   $("back-btn").disabled = busy;
 }
 
@@ -234,7 +247,7 @@ function goBack() {
   renderItem();
 }
 
-$("flag-issue").addEventListener("change", toggleNote);
+$("flag-issue").addEventListener("change", () => { toggleNote(); updateNav(); });
 $("start-btn").addEventListener("click", () => {
   hide("consent");
   show("rating");
