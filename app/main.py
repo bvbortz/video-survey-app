@@ -105,6 +105,7 @@ async def create_session(seen: str = ""):
             "index": i,
             "token": pair_token(it["pair"]["pair_id"]),  # opaque, for cross-round dedup
             "prompt_text": it["pair"].get("prompt_text"),
+            "prompt_text_he": it["pair"].get("prompt_text_he"),  # None until push script runs
             "image_url": _video_url(it["pair"]["image_file"]) if it["pair"].get("image_file") else None,
             "video_a": _video_url(legs[a_leg]["file"]),
             "video_b": _video_url(legs[b_leg]["file"]),

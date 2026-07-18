@@ -52,7 +52,7 @@ def test_session_and_response(client):
     # leg identity must not leak to the client: items expose only opaque A/B slots
     # (token is an opaque per-pair hash, used for cross-round dedup)
     for it in s["items"]:
-        assert set(it) == {"index", "token", "prompt_text",
+        assert set(it) == {"index", "token", "prompt_text", "prompt_text_he",
                            "image_url", "video_a", "video_b"}
     it = s["items"][0]
     assert it["video_a"].startswith("https://cdn.example/videos/")

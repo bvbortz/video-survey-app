@@ -3,5 +3,9 @@ __pycache__/
 *.pyc
 .env
 pairs.json
+# prompts + Hebrew translations live in Mongo (source of truth); these are just
+# working copies for scripts/push_hebrew_prompts.py
+app/i18n_prompts_en.json
+app/i18n_prompts_he.json
 survey_videos/
 *.mp4

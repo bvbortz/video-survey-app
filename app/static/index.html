@@ -8,37 +8,40 @@
 </head>
 <body>
   <main id="app">
+    <!-- Language switcher (always visible) -->
+    <div class="langbar" role="group" aria-label="Language / שפה">
+      <button id="lang-en" class="lang-btn" type="button">English</button>
+      <button id="lang-he" class="lang-btn" type="button">עברית</button>
+    </div>
+
     <!-- Consent -->
     <section id="consent" class="card hidden">
-      <h1>AI Video Quality Survey</h1>
+      <h1 id="consent-title"></h1>
       <p id="consent-text"></p>
-      <p class="setup-note">ℹ️ The <strong>starting image is a real photo</strong>.
-        The prompt and both videos (A and B) are <strong>AI-generated</strong> — so a
-        prompt may occasionally describe something that can’t happen given the image.
-        If that occurs, rate what you actually see and tick the box on that screen.</p>
-      <button id="start-btn" class="primary">Start</button>
+      <p id="setup-note" class="setup-note"></p>
+      <button id="start-btn" class="primary"></button>
     </section>
 
     <!-- Rating -->
     <section id="rating" class="hidden">
       <div class="progress"><div id="progress-bar"></div></div>
       <p class="counter"><span id="counter"></span></p>
-      <p class="prompt">Requested action: “<span id="prompt-text"></span>”</p>
-      <p class="hint">Starting image = real photo · prompt &amp; both videos = AI-generated</p>
+      <p class="prompt"><span id="prompt-label"></span> “<span id="prompt-text"></span>”</p>
+      <p id="hint-line" class="hint"></p>
 
       <div class="stage">
         <figure class="cond">
-          <figcaption>Starting image</figcaption>
-          <img id="cond-image" alt="starting frame">
+          <figcaption id="cap-starting-image"></figcaption>
+          <img id="cond-image" alt="">
         </figure>
         <div class="videos">
           <div class="vid-col">
-            <h2>Video A</h2>
+            <h2 id="label-video-a"></h2>
             <video id="video-a" controls autoplay muted loop playsinline></video>
             <div class="sliders" id="sliders-a"></div>
           </div>
           <div class="vid-col">
-            <h2>Video B</h2>
+            <h2 id="label-video-b"></h2>
             <video id="video-b" controls autoplay muted loop playsinline></video>
             <div class="sliders" id="sliders-b"></div>
           </div>
@@ -48,31 +51,27 @@
       <div class="flag-row">
         <label class="flag-label">
           <input type="checkbox" id="flag-issue">
-          There’s a problem with this pair — e.g. the prompt is impossible or doesn’t
-          match the starting image, contains NSFW/inappropriate content, or anything else
+          <span id="flag-label-text"></span>
         </label>
-        <textarea id="flag-note" class="hidden" rows="2" maxlength="1000"
-          placeholder="Please describe what’s wrong (e.g. the action can’t happen given this image, NSFW content, …)"></textarea>
+        <textarea id="flag-note" class="hidden" rows="2" maxlength="1000"></textarea>
       </div>
 
       <div class="nav">
-        <button id="back-btn" class="secondary">Back</button>
-        <button id="next-btn" class="primary" disabled>Next</button>
-        <span id="saving" class="saving hidden"><span class="spinner"></span> Saving…</span>
+        <button id="back-btn" class="secondary"></button>
+        <button id="next-btn" class="primary" disabled></button>
+        <span id="saving" class="saving hidden"><span class="spinner"></span> <span id="saving-text"></span></span>
       </div>
-      <p id="next-hint" class="hint">To continue, move every slider for both videos —
-        or tick the “there’s a problem” box above if this pair can’t be rated.</p>
+      <p id="next-hint" class="hint"></p>
     </section>
 
     <!-- Done -->
     <section id="done" class="card hidden">
-      <h1>Thank you!</h1>
-      <p>Your ratings were recorded. You may close this tab, or
-         <a href="#" id="again">rate another set</a>.</p>
+      <h1 id="done-title"></h1>
+      <p><span id="done-text"></span> <a href="#" id="again"></a></p>
     </section>
 
     <section id="error" class="card hidden">
-      <h1>Something went wrong</h1>
+      <h1 id="error-title"></h1>
       <p id="error-text"></p>
     </section>
   </main>

@@ -10,6 +10,15 @@ body {
 #app { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
 .hidden { display: none !important; }
 
+/* language switcher — always visible, top of the page */
+.langbar { display: flex; justify-content: flex-end; gap: 6px; margin-bottom: 8px; }
+.lang-btn {
+  background: transparent; color: var(--muted); border: 1px solid var(--border);
+  border-radius: 999px; padding: 5px 14px; font-size: .85rem; cursor: pointer;
+}
+.lang-btn:hover { color: var(--fg); border-color: var(--accent); }
+.lang-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
 .card { background: var(--card); border: 1px solid var(--border);
   border-radius: 12px; padding: 28px; max-width: 640px; margin: 40px auto; }
 h1 { margin-top: 0; }
