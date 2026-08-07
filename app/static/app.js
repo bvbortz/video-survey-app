@@ -382,37 +382,55 @@ function setBusy(busy) {
   $("back-btn").disabled = busy;
 }
 
+// Ratings are sent without blocking the rater. The database is a free-tier Atlas
+// in another region and a single write can take tens of seconds; waiting for that
+// between every pair is how a survey gets abandoned half-finished. The send is
+// idempotent server-side (keyed on session+index), so a retry cannot double-count.
+const pendingSaves = [];
+let saveFailures = 0;
+
+function sendRating(it, ans, elapsed) {
+  const body = JSON.stringify({
+    session_id: SESSION.session_id,
+    index: it.index,
+    video_a: ans.a,
+    video_b: ans.b,
+    elapsed_ms: elapsed,
+    flag_issue: ans.issue,
+    note: ans.note,
+  });
+  const post = () => fetch("/api/response", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body,
+    // survive the page being closed right after the last answer
+    keepalive: true,
+  }).then(r => { if (!r.ok) throw new Error("response " + r.status); });
+
+  // one retry: these are unrecoverable if dropped, and the upsert makes it safe
+  const p = post().catch(() => post()).catch(() => { saveFailures += 1; });
+  pendingSaves.push(p);
+  return p;
+}
+
 async function submit() {
   captureCurrent();
   const it = SESSION.items[idx];
   const ans = answers[idx];
-  setBusy(true);
-  try {
-    const r = await fetch("/api/response", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        session_id: SESSION.session_id,
-        index: it.index,
-        video_a: ans.a,
-        video_b: ans.b,
-        elapsed_ms: Date.now() - shownAt,
-        flag_issue: ans.issue,
-        note: ans.note,
-      }),
-    });
-    if (!r.ok) throw new Error("response " + r.status);
-  } catch (e) {
-    setBusy(false);
-    return fail(t("err_save") + e.message);
-  }
+
+  sendRating(it, ans, Date.now() - shownAt);
   markSeen(it.token);   // remember across rounds so its clips aren't shown again
-  setBusy(false);
   idx += 1;
+
   if (idx >= SESSION.items.length) {
+    // Only the last one waits, so nothing is lost if the tab closes on "done".
+    setBusy(true);
+    await Promise.allSettled(pendingSaves);
+    setBusy(false);
     $("progress-bar").style.width = "100%";
     hide("rating");
     show("done");
+    if (saveFailures > 0) fail(t("err_save") + saveFailures);
   } else {
     renderItem();
   }

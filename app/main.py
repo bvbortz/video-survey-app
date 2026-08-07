@@ -14,6 +14,7 @@ Endpoints:
 """
 from __future__ import annotations
 
+import logging
 import os
 import uuid
 from contextlib import asynccontextmanager
@@ -21,13 +22,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from . import db as dbmod
 from .assignment import ACTIVE, build_session_items, pair_token
+
+logger = logging.getLogger("survey")
 
 RUBRIC = [
     "prompt_adherence", "scene_fidelity", "motion_quality", "object_consistency",
@@ -167,8 +170,20 @@ class ResponseIn(BaseModel):
         return self
 
 
+async def _persist_response(db, doc: dict) -> None:
+    """Write the rating after the rater has already moved on. Nobody is waiting on
+    this, so a failure is silent to them — log it loudly, it is unrecoverable data."""
+    try:
+        await db.responses.update_one(
+            {"session_id": doc["session_id"], "index": doc["index"]},
+            {"$set": doc}, upsert=True)
+    except Exception:
+        logger.exception("LOST RATING session=%s index=%s pair=%s",
+                         doc.get("session_id"), doc.get("index"), doc.get("pair_id"))
+
+
 @app.post("/api/response")
-async def submit_response(body: ResponseIn):
+async def submit_response(body: ResponseIn, background: BackgroundTasks):
     db = dbmod.get_db()
     session = await db.sessions.find_one({"session_id": body.session_id})
     if not session:
@@ -180,27 +195,29 @@ async def submit_response(body: ResponseIn):
         raise HTTPException(400, "bad item index")
 
     a_leg, b_leg = assignment["order"][0], assignment["order"][1]
-    # de-dupe: one submission per (session, index)
-    await db.responses.update_one(
-        {"session_id": body.session_id, "index": body.index},
-        {"$set": {
-            "session_id": body.session_id,
-            "index": body.index,
-            "pair_id": assignment["pair_id"],
-            "kind": assignment["kind"],
-            "created_at": _now(),
-            "elapsed_ms": body.elapsed_ms,
-            "ratings": {                       # stored resolved to leg identity
-                # exclude_none: a pre-2026-07-11 cached client may omit scene_fidelity;
-                # analysis treats the absent key as 10.
-                a_leg: body.video_a.model_dump(exclude_none=True),
-                b_leg: body.video_b.model_dump(exclude_none=True),
-            },
-            "flag_issue": body.flag_issue,
-            "note": body.note.strip(),
-        }},
-        upsert=True,
-    )
+    # de-dupe key is (session, index), so the upsert is idempotent and a client
+    # retry after a timeout cannot double-count.
+    doc = {
+        "session_id": body.session_id,
+        "index": body.index,
+        "pair_id": assignment["pair_id"],
+        "kind": assignment["kind"],
+        "created_at": _now(),
+        "elapsed_ms": body.elapsed_ms,
+        "ratings": {                       # stored resolved to leg identity
+            # exclude_none: a pre-2026-07-11 cached client may omit scene_fidelity;
+            # analysis treats the absent key as 10.
+            a_leg: body.video_a.model_dump(exclude_none=True),
+            b_leg: body.video_b.model_dump(exclude_none=True),
+        },
+        "flag_issue": body.flag_issue,
+        "note": body.note.strip(),
+    }
+    # Validation and leg resolution have already happened, so the rater gets their
+    # answer now and the write lands after. Atlas is a free tier in another region
+    # and a write can take tens of seconds; making someone sit through that once per
+    # pair is the difference between finishing the survey and abandoning it.
+    background.add_task(_persist_response, db, doc)
     return {"ok": True}
 
 
@@ -296,7 +313,11 @@ async def admin_pairs_data(request: Request, version: str = "", arm: str = "",
         q["arm"] = arm
     pairs = [p async for p in db.pairs.find(q, {"_id": 0})]
 
-    human = _leg_means([r async for r in db.responses.find({}, {"_id": 0})])
+    # Only the two fields the aggregation needs, and only for the pairs on screen.
+    # Atlas is on a free tier in another region, so a full response scan is felt.
+    pair_ids = [p["pair_id"] for p in pairs]
+    human = _leg_means([r async for r in db.responses.find(
+        {"pair_id": {"$in": pair_ids}}, {"_id": 0, "pair_id": 1, "ratings": 1})])
     stars = {s["pair_id"] async for s in db.shortlist.find({"starred": True}, {"_id": 0})}
 
     rows = []
