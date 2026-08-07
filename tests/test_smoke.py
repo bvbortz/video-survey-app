@@ -10,6 +10,7 @@ from mongomock_motor import AsyncMongoMockClient
 
 from app import db as dbmod
 from app import main
+from app.assignment import pair_token
 
 
 def _pair(pid, arm, short_file, other_leg, other_file, attention=False):
@@ -169,6 +170,31 @@ def test_unflagged_missing_scene_fidelity_ok(client):
         "video_a": legacy, "video_b": legacy, "elapsed_ms": 9,
     })
     assert r.status_code == 200
+
+
+def test_retired_pairs_are_never_served(client):
+    """A refresh retires the previous version rather than deleting it: retired pairs
+    stay queryable for the admin join, but no session may contain one."""
+    c, db = client
+    loop = asyncio.get_event_loop()
+
+    # retire everything currently loaded, then add one live pair of each kind
+    loop.run_until_complete(db.pairs.update_many({}, {"$set": {"active": False}}))
+    fresh = _pair("new00", "short_vs_finetuned", "new_s.mp4", "finetuned", "new_o.mp4")
+    fresh_attn = _pair("newattn", "short_vs_base", "a_s.mp4", "base", "a_o.mp4", attention=True)
+    for p in (fresh, fresh_attn):
+        p["version"] = "v2"
+        p["active"] = True
+    loop.run_until_complete(db.pairs.insert_many([fresh, fresh_attn]))
+
+    for _ in range(5):        # selection is randomised, so sample it
+        s = c.get("/api/session").json()
+        assert {it["token"] for it in s["items"]} == {
+            pair_token("new00"), pair_token("newattn")}
+
+    # retired docs still exist and still carry the fields the admin $lookup needs
+    old = loop.run_until_complete(db.pairs.find_one({"pair_id": "p00"}))
+    assert old["active"] is False and old["arm"] and old["generator"]
 
 
 def test_admin_gate(client):

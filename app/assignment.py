@@ -23,6 +23,11 @@ import random
 N_REAL = 6
 N_ATTENTION = 1
 
+# Retired pairs stay in the collection so old responses can still be joined back to
+# their arm/generator (the admin stats do exactly that), but they are never handed
+# out again. Absent field == active, so pairs loaded before this existed still serve.
+ACTIVE = {"active": {"$ne": False}}
+
 
 def pair_token(pair_id: str) -> str:
     """Opaque, stable id the client can store for cross-round dedup (no leg leak)."""
@@ -91,7 +96,7 @@ async def build_session_items(
     seen_tokens = set(seen_tokens or ())
     counts = await _judged_counts(db)
 
-    reals = [p async for p in db.pairs.find({"is_attention_check": {"$ne": True}})]
+    reals = [p async for p in db.pairs.find({"is_attention_check": {"$ne": True}, **ACTIVE})]
     for p in reals:
         p["_n"] = counts.get(p["pair_id"], 0)
 
@@ -104,7 +109,7 @@ async def build_session_items(
 
     chosen = _select(reals, n_real, seen_clips)
 
-    attn = [p async for p in db.pairs.find({"is_attention_check": True})]
+    attn = [p async for p in db.pairs.find({"is_attention_check": True, **ACTIVE})]
     random.shuffle(attn)
     attn = attn[:n_attention]
 

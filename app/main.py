@@ -27,7 +27,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from . import db as dbmod
-from .assignment import build_session_items, pair_token
+from .assignment import ACTIVE, build_session_items, pair_token
 
 RUBRIC = [
     "prompt_adherence", "scene_fidelity", "motion_quality", "object_consistency",
@@ -221,7 +221,9 @@ async def admin(request: Request):
     db = dbmod.get_db()
     total_sessions = await db.sessions.count_documents({})
     total_responses = await db.responses.count_documents({})
-    total_pairs = await db.pairs.count_documents({"is_attention_check": {"$ne": True}})
+    total_pairs = await db.pairs.count_documents(
+        {"is_attention_check": {"$ne": True}, **ACTIVE})
+    retired_pairs = await db.pairs.count_documents({"active": False})
     flagged = await db.responses.count_documents({"flag_issue": True})
 
     per_arm = {}
@@ -235,7 +237,8 @@ async def admin(request: Request):
         per_arm[f"{row['_id']['gen']}/{row['_id']['arm']}"] = row["n"]
 
     judged = await db.responses.distinct("pair_id", {"kind": "real"})
-    coverage = f"{len(judged)}/{total_pairs} real pairs judged at least once"
+    coverage = (f"{len(judged)}/{total_pairs} real pairs judged at least once"
+                + (f" ({retired_pairs} retired)" if retired_pairs else ""))
 
     return {
         "sessions": total_sessions,

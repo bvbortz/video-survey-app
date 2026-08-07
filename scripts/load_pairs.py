@@ -24,6 +24,13 @@ def main() -> int:
     ap.add_argument("manifest", help="path to pairs.json")
     ap.add_argument("--db", default="survey")
     ap.add_argument("--drop", action="store_true", help="drop pairs/clips first")
+    ap.add_argument("--retire-others", action="store_true",
+                    help="set active=False on every pair whose version is NOT in this "
+                         "manifest, so raters are served only the new set. Retired pairs "
+                         "stay in the collection because the admin per-arm stats join old "
+                         "responses back to them. Undo with --unretire.")
+    ap.add_argument("--unretire", action="store_true",
+                    help="clear active=False everywhere (undoes --retire-others)")
     args = ap.parse_args()
 
     uri = os.environ.get("MONGO_URI")
@@ -52,6 +59,18 @@ def main() -> int:
         db.clips.bulk_write(
             [UpdateOne({"clip_id": c["clip_id"]}, {"$set": c}, upsert=True) for c in clips]
         )
+
+    # Retire by VERSION, not by pair_id: a version is one export of one generator, which
+    # is exactly the unit being replaced. Doing it after the upsert means the pairs just
+    # loaded are already active and can never retire themselves.
+    versions = sorted({p["version"] for p in pairs})
+    if args.retire_others:
+        res = db.pairs.update_many({"version": {"$nin": versions}}, {"$set": {"active": False}})
+        db.pairs.update_many({"version": {"$in": versions}}, {"$set": {"active": True}})
+        print(f"  retired {res.modified_count} pairs outside version(s) {versions}")
+    elif args.unretire:
+        res = db.pairs.update_many({"active": False}, {"$set": {"active": True}})
+        print(f"  un-retired {res.modified_count} pairs")
 
     print(f"loaded {len(pairs)} pairs, {len(clips)} clips into '{args.db}'")
     print("  attention-check pairs:",
