@@ -197,6 +197,39 @@ def test_retired_pairs_are_never_served(client):
     assert old["active"] is False and old["arm"] and old["generator"]
 
 
+def test_admin_pairs_gallery(client):
+    """Gallery ranks by the human gap, falls back to auto, and stars are togglable."""
+    c, db = client
+    loop = asyncio.get_event_loop()
+
+    # p00 legs are short(0.4) / base(0.6). Rate it so the base leg looks much better.
+    loop.run_until_complete(db.responses.insert_many([
+        {"session_id": "s1", "index": 0, "pair_id": "p00",
+         "ratings": {"short": {"visual_quality": 2}, "base": {"visual_quality": 9}}},
+        {"session_id": "s2", "index": 0, "pair_id": "p00",
+         "ratings": {"short": {"visual_quality": 3}, "base": {"visual_quality": 8}}},
+    ]))
+
+    assert c.get("/admin/pairs").status_code == 401          # gated like the rest
+    assert c.get("/admin/pairs.json").status_code == 401
+    c.cookies.set("admin_token", "s3cret")
+
+    j = c.get("/admin/pairs.json").json()
+    top = j["rows"][0]
+    assert top["pair_id"] == "p00"                            # rated pair sorts first
+    assert round(top["human_gap"], 2) == 6.0                  # (9+8)/2 - (2+3)/2
+    assert top["n_ratings"] == 2
+    assert all(r["human_gap"] is None for r in j["rows"][1:])  # unrated fall to the back
+
+    # star it, and check the starred-only filter picks it up
+    assert c.post("/admin/pairs/p00/star").json()["starred"] is True
+    only = c.get("/admin/pairs.json?starred=1").json()
+    assert [r["pair_id"] for r in only["rows"]] == ["p00"]
+    assert c.post("/admin/pairs/p00/star").json()["starred"] is False   # toggles off
+
+    assert "<title>Pairs" in c.get("/admin/pairs").text
+
+
 def test_admin_gate(client):
     c, _ = client
     assert c.get("/admin").status_code == 401

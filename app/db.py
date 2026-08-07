@@ -37,3 +37,6 @@ async def ensure_indexes(db) -> None:
     await db.responses.create_index("pair_id")
     await db.responses.create_index("session_id")
     await db.sessions.create_index("session_id", unique=True)
+    # `active` filters every pair selection; shortlist backs the admin gallery.
+    await db.pairs.create_index("active")
+    await db.shortlist.create_index("pair_id", unique=True)

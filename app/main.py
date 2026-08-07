@@ -257,6 +257,102 @@ async def admin_export(request: Request):
     return JSONResponse(docs)
 
 
+# ------------------------------------------------- admin: browse pairs / shortlist
+# A gallery for picking the clips that go on the GitHub page. Ranked by the human
+# rating gap between the two legs, because "best" here means the improvement is
+# visible to a person — not that the automatic score is high. Those scores carry
+# roughly +/-0.08 of run-to-run noise and cannot order clips this finely.
+
+def _leg_means(rating_docs: list[dict]) -> dict[str, dict]:
+    """pair_id -> {leg: mean over metrics and raters, 'n': raters}."""
+    acc: dict[str, dict[str, list[float]]] = {}
+    counts: dict[str, int] = {}
+    for r in rating_docs:
+        pid = r.get("pair_id")
+        if not pid:
+            continue
+        counts[pid] = counts.get(pid, 0) + 1
+        for leg, scores in (r.get("ratings") or {}).items():
+            vals = [v for v in (scores or {}).values() if isinstance(v, (int, float))]
+            if vals:
+                acc.setdefault(pid, {}).setdefault(leg, []).extend(vals)
+    out = {}
+    for pid, legs in acc.items():
+        out[pid] = {leg: sum(v) / len(v) for leg, v in legs.items()}
+        out[pid]["n"] = counts.get(pid, 0)
+    return out
+
+
+@app.get("/admin/pairs.json")
+async def admin_pairs_data(request: Request, version: str = "", arm: str = "",
+                           starred: int = 0, limit: int = 400):
+    _check_admin(request)
+    db = dbmod.get_db()
+
+    q: dict = {"is_attention_check": {"$ne": True}, **ACTIVE}
+    if version:
+        q["version"] = version
+    if arm:
+        q["arm"] = arm
+    pairs = [p async for p in db.pairs.find(q, {"_id": 0})]
+
+    human = _leg_means([r async for r in db.responses.find({}, {"_id": 0})])
+    stars = {s["pair_id"] async for s in db.shortlist.find({"starred": True}, {"_id": 0})}
+
+    rows = []
+    for p in pairs:
+        legs = p.get("legs", [])
+        if len(legs) != 2:
+            continue
+        h = human.get(p["pair_id"], {})
+        ref, other = legs[0], legs[1]          # legs[0] is always the "short" reference
+        hr, ho = h.get(ref["leg"]), h.get(other["leg"])
+        gap = (ho - hr) if isinstance(hr, float) and isinstance(ho, float) else None
+        auto = [l.get("auto_score") for l in legs]
+        auto_gap = (auto[1] - auto[0]) if all(isinstance(a, (int, float)) for a in auto) else None
+        rows.append({
+            "pair_id": p["pair_id"], "arm": p.get("arm"), "version": p.get("version"),
+            "generator": p.get("generator"), "prompt_text": p.get("prompt_text"),
+            "phrasing": p.get("phrasing"),
+            "starred": p["pair_id"] in stars,
+            "n_ratings": h.get("n", 0),
+            "human_gap": gap, "auto_gap": auto_gap,
+            "legs": [{"leg": l["leg"], "url": _video_url(l["file"]),
+                      "auto_score": l.get("auto_score"),
+                      "human": h.get(l["leg"])} for l in legs],
+        })
+
+    if starred:
+        rows = [r for r in rows if r["starred"]]
+    # Rated pairs first, ordered by how much better the second leg looked to people;
+    # unrated pairs fall back to the automatic gap so the page is still usable on a
+    # freshly loaded set with no responses yet.
+    rows.sort(key=lambda r: (r["human_gap"] is None,
+                             -(r["human_gap"] if r["human_gap"] is not None
+                               else (r["auto_gap"] or 0))))
+    return JSONResponse({"count": len(rows), "rows": rows[:limit],
+                         "versions": sorted({p.get("version") for p in pairs if p.get("version")})})
+
+
+@app.post("/admin/pairs/{pair_id}/star")
+async def admin_star(pair_id: str, request: Request):
+    _check_admin(request)
+    db = dbmod.get_db()
+    cur = await db.shortlist.find_one({"pair_id": pair_id})
+    new = not (cur or {}).get("starred", False)
+    await db.shortlist.update_one({"pair_id": pair_id},
+                                  {"$set": {"starred": new, "updated_at": _now()}},
+                                  upsert=True)
+    return {"pair_id": pair_id, "starred": new}
+
+
+@app.get("/admin/pairs")
+async def admin_pairs_page(request: Request):
+    _check_admin(request)
+    page = Path(__file__).parent / "templates" / "admin_pairs.html"
+    return HTMLResponse(page.read_text(encoding="utf-8"))
+
+
 # ---------------------------------------------------------------- static (last)
 
 if STATIC_DIR.exists():
