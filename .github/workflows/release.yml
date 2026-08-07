@@ -1,0 +1,88 @@
+name: Release image
+
+# Publishing a GitHub release builds the image and pushes it to GHCR, tagged with
+# the release tag. Deploying is still a deliberate manual step — see the summary
+# printed at the end of the run for the exact `az containerapp update` command.
+#
+# workflow_dispatch is here so a build can be re-run without cutting a new release
+# (e.g. the push failed); it tags the image with the branch/tag it ran on.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+env:
+  # Matches AZURE_DEPLOY_GUIDE.md §4 — the deploy commands reference survey-app,
+  # not the repository name, so keep these in step if you ever rename it.
+  IMAGE_NAME: survey-app
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'          # same minor as the Dockerfile base image
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: pytest tests/ -q
+
+  build-and-push:
+    needs: test                            # never publish an image that fails its tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write                      # GITHUB_TOKEN pushes to GHCR; no secrets needed
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern=v{{version}}
+            type=ref,event=tag
+            type=ref,event=branch
+            type=raw,value=latest,enable=${{ github.event_name == 'release' }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          # Azure Container Apps runs amd64; a default build on an arm runner would
+          # produce an image that starts and then crash-loops.
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy command
+        run: |
+          {
+            echo "### Image pushed"
+            echo
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+            echo
+            echo "Deploy with:"
+            echo
+            echo '```'
+            echo "az containerapp update -n \$APP -g \$RG --image ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}"
+            echo '```'
+            echo
+            echo "The package is private by default. If Azure pulls anonymously,"
+            echo "make it public once under Packages -> survey-app -> Package settings."
+          } >> "$GITHUB_STEP_SUMMARY"
