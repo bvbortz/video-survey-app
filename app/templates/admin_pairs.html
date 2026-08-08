@@ -20,7 +20,13 @@
   .prompt { font-weight:600; }
   .meta { color:var(--mut); font-size:12px; margin-top:2px; }
   .vids { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:12px; margin-top:10px; }
-  video { width:100%; border-radius:8px; background:#000; display:block; }
+  /* A fixed-aspect slot holds the space so mounting a video causes no layout shift,
+     and object-fit keeps portrait clips undistorted inside it. */
+  .vslot { position:relative; width:100%; aspect-ratio:16/9; background:#000;
+           border-radius:8px; overflow:hidden; }
+  .vslot video { position:absolute; inset:0; width:100%; height:100%; display:block; }
+  .vslot:empty::after { content:"▶"; position:absolute; inset:0; display:grid;
+                        place-items:center; color:#555; font-size:26px; }
   .leg { font-size:12px; color:var(--mut); margin-top:4px; display:flex; justify-content:space-between; }
   .gap { font-variant-numeric:tabular-nums; white-space:nowrap; }
   .gap.pos { color:var(--good); font-weight:600; }
@@ -98,13 +104,15 @@ function render() {
       </div>
       <div class="vids">
         ${r.legs.map(l => `<div>
-          <video src="${esc(l.url)}" controls preload="none" loop muted playsinline></video>
+          <div class="vslot" data-src="${esc(l.url)}"></div>
           <div class="leg"><span>${esc(l.leg)}</span>
             <span>human ${fmt(l.human, 1)} · auto ${fmt(l.auto_score)}</span></div>
         </div>`).join("")}
       </div>
     </div>`;
   }).join("");
+
+  mountVideos();
 
   document.querySelectorAll(".star").forEach(b => b.onclick = async () => {
     const res = await fetch(`/admin/pairs/${encodeURIComponent(b.dataset.id)}/star`,
@@ -115,6 +123,34 @@ function render() {
     const row = rows.find(x => x.pair_id === j.pair_id);
     if (row) row.starred = j.starred;
   });
+}
+
+// A <video> element is expensive even with preload="none" — the browser allocates a
+// media player per element, and this page renders up to 400 pairs, so 800 of them made
+// the whole tab unresponsive. Only the slots near the viewport hold a real element; the
+// rest are empty divs. A playing video is never torn down, so scrolling away from one
+// you started does not stop it.
+let io = null;
+function mountVideos() {
+  if (io) io.disconnect();
+  io = new IntersectionObserver(entries => {
+    for (const e of entries) {
+      const slot = e.target, v = slot.firstElementChild;
+      if (e.isIntersecting) {
+        if (v) continue;
+        const el = document.createElement("video");
+        el.preload = "none";
+        el.controls = el.loop = el.muted = el.playsInline = true;
+        el.src = slot.dataset.src;
+        slot.appendChild(el);
+      } else if (v && v.paused) {
+        v.removeAttribute("src");
+        v.load();               // drops the buffer and releases the decoder
+        v.remove();
+      }
+    }
+  }, { rootMargin: "400px 0px" });
+  document.querySelectorAll(".vslot").forEach(s => io.observe(s));
 }
 
 function esc(s) {
