@@ -127,9 +127,14 @@ function render() {
 
 // A <video> element is expensive even with preload="none" — the browser allocates a
 // media player per element, and this page renders up to 400 pairs, so 800 of them made
-// the whole tab unresponsive. Only the slots near the viewport hold a real element; the
-// rest are empty divs. A playing video is never torn down, so scrolling away from one
-// you started does not stop it.
+// the whole tab unresponsive. Only slots actually on screen hold a real element; the
+// rest are empty divs.
+//
+// No rootMargin, deliberately: the element is created the moment the slot touches the
+// viewport and destroyed the moment it leaves. Mounting early would buy nothing anyway,
+// since preload="none" means no data is fetched until you press play — the element only
+// has to exist while you can see it. A video playing when it scrolls off is torn down
+// with the rest; they are muted and looping, so nothing is lost but the decoder.
 let io = null;
 function mountVideos() {
   if (io) io.disconnect();
@@ -143,13 +148,14 @@ function mountVideos() {
         el.controls = el.loop = el.muted = el.playsInline = true;
         el.src = slot.dataset.src;
         slot.appendChild(el);
-      } else if (v && v.paused) {
+      } else if (v) {
+        v.pause();
         v.removeAttribute("src");
         v.load();               // drops the buffer and releases the decoder
         v.remove();
       }
     }
-  }, { rootMargin: "400px 0px" });
+  });
   document.querySelectorAll(".vslot").forEach(s => io.observe(s));
 }
 
