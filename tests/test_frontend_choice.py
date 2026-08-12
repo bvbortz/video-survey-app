@@ -126,6 +126,40 @@ def test_block_boundary_switches_the_ui(tmp_path):
     assert out["sliderCount"] == 2 * len(RUBRIC)
 
 
+def test_choice_note_is_optional_and_survives_back(tmp_path):
+    """The comment box must never gate Next, must reach the server when filled, and
+    must still be there if the rater goes Back to change their mind."""
+    out = _run("""(out) => {
+        document.getElementById("start-btn").click();
+        out.noteVisible = !!document.getElementById("choice-note").offsetParent;
+        // answer item 1 WITHOUT a note
+        document.querySelector('.choice-btn[data-value="A"]').click();
+        out.nextEnabledWithEmptyNote = !document.getElementById("next-btn").disabled;
+        document.getElementById("next-btn").click();
+        // answer item 2 WITH a note
+        const box = document.getElementById("choice-note");
+        box.value = "the dog's legs merge together";
+        document.querySelector('.choice-btn[data-value="B"]').click();
+        document.getElementById("next-btn").click();
+        // item 3 must start clean, not inherit the previous note
+        out.item3NoteAfterAdvance = document.getElementById("choice-note").value;
+        document.getElementById("back-btn").click();
+        out.noteRestoredOnBack = document.getElementById("choice-note").value;
+        out.pickRestoredOnBack =
+            document.querySelector(".choice-btn.selected").dataset.value;
+        out.posts = window.__posts;
+    }""", tmp_path)
+    assert out["errors"] == [] and "thrown" not in out
+    assert out["noteVisible"] is True
+    assert out["nextEnabledWithEmptyNote"] is True, "an empty note must not block Next"
+    assert "choice_note" not in out["posts"][0], "empty note must not be sent"
+    assert out["posts"][1]["choice_note"] == "the dog's legs merge together"
+    assert out["posts"][1]["choice"] == "B"
+    assert out["item3NoteAfterAdvance"] == "", "note leaked to the next item"
+    assert out["noteRestoredOnBack"] == "the dog's legs merge together"
+    assert out["pickRestoredOnBack"] == "B"
+
+
 def test_rating_item_still_needs_every_slider(tmp_path):
     """The forced-choice path must not have loosened the rule for rating pairs."""
     out = _run("""(out) => {

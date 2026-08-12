@@ -248,6 +248,38 @@ def test_no_choice_pairs_loaded_behaves_as_before(client):
     assert len(s["items"]) == assignment.N_ITEMS_REAL + assignment.N_ATTENTION  # attention is 0
 
 
+def test_choice_note_is_stored_separately_from_the_flag_note(monkeypatch):
+    """`note` means "this pair is unusable" and drives exclusions; `choice_note` is
+    ordinary commentary on a pair that was answered normally. Pooling them would make
+    both unreadable, so they are separate fields."""
+    c, db = _choice_client(monkeypatch)
+    with c:
+        s = c.get("/api/session").json()
+        items = [i for i in s["items"] if i["mode"] == "2afc"]
+        loop = asyncio.get_event_loop()
+
+        assert c.post("/api/response", json={
+            "session_id": s["session_id"], "index": items[0]["index"],
+            "choice": "B", "choice_note": "  the rider's arm detaches  ",
+            "elapsed_ms": 700}).status_code == 200
+        doc = loop.run_until_complete(db.responses.find_one({"index": items[0]["index"]}))
+        assert doc["choice_note"] == "the rider's arm detaches"   # trimmed
+        assert doc["note"] == "" and doc["flag_issue"] is False
+
+        # omitted or blank -> the field is absent, not an empty string to filter out later
+        assert c.post("/api/response", json={
+            "session_id": s["session_id"], "index": items[1]["index"],
+            "choice": "A", "choice_note": "   ", "elapsed_ms": 700}).status_code == 200
+        doc = loop.run_until_complete(db.responses.find_one({"index": items[1]["index"]}))
+        assert "choice_note" not in doc
+
+        # over the cap is rejected rather than silently truncated
+        assert c.post("/api/response", json={
+            "session_id": s["session_id"], "index": items[2]["index"],
+            "choice": "A", "choice_note": "x" * 1001,
+            "elapsed_ms": 700}).status_code == 422
+
+
 def test_choice_rejected_on_rating_pair(client):
     c, _ = client
     s = c.get("/api/session").json()

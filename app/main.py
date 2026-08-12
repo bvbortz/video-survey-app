@@ -175,6 +175,11 @@ class ResponseIn(BaseModel):
     # submit_response resolves them to the leg before storing, because the position
     # is meaningless once the session's randomisation is gone.
     choice: Optional[str] = None
+    # Free text on a forced-choice item: what the rater saw wrong in either clip.
+    # Distinct from `note`, which belongs to flag_issue and means "this pair is
+    # unusable". This one is ordinary commentary on a pair that was answered
+    # normally, and mixing the two would make both unreadable.
+    choice_note: str = Field(default="", max_length=1000)
     elapsed_ms: int = Field(ge=0)
     # rater flags a problem with this pair (impossible/mismatched prompt, NSFW, other);
     # `note` describes what's wrong
@@ -266,6 +271,8 @@ async def submit_response(body: ResponseIn, background: BackgroundTasks):
             (a_leg if body.choice == "A" else b_leg)
         )
         doc["shown_as"] = body.choice
+        if body.choice_note.strip():
+            doc["choice_note"] = body.choice_note.strip()
     else:
         doc["ratings"] = {                 # stored resolved to leg identity
             # exclude_none: a pre-2026-07-11 cached client may omit scene_fidelity;

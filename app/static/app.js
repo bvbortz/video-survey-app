@@ -53,6 +53,11 @@ const I18N = {
     // warm-up, because those answers are the ones the study most depends on.
     section_choice: (i, n) => `Part 1 of 2 — quick comparisons (${i} of ${n})`,
     section_rating: (i, n) => `Part 2 of 2 — detailed ratings (${i} of ${n})`,
+    // Optional on purpose. Which defects a person actually notices is the thing a
+    // score cannot tell us, but requiring prose here would cost far more answers
+    // than the prose is worth.
+    choice_note_label: "Optional — anything wrong in either video? (a few words is plenty)",
+    choice_note_ph: "e.g. the legs merge together, the object vanishes halfway, the camera jumps",
     next_hint_choice:
       "To continue, pick one of the three options above — or tick the “there’s a " +
       "problem” box if this pair can’t be judged.",
@@ -132,6 +137,8 @@ const I18N = {
     choice_tie: "בערך אותו דבר",
     section_choice: (i, n) => `חלק 1 מתוך 2 — השוואות מהירות (${i} מתוך ${n})`,
     section_rating: (i, n) => `חלק 2 מתוך 2 — דירוגים מפורטים (${i} מתוך ${n})`,
+    choice_note_label: "רשות — משהו לא תקין באחד הסרטונים? (גם כמה מילים יעזרו)",
+    choice_note_ph: "למשל הרגליים מתמזגות, האובייקט נעלם באמצע, המצלמה קופצת",
     next_hint_choice:
       "כדי להמשיך, בחרו אחת משלוש האפשרויות למעלה — או סמנו את התיבה 'יש בעיה' " +
       "אם לא ניתן לשפוט את הזוג הזה.",
@@ -361,6 +368,7 @@ function captureCurrent() {
   answers[idx] = {
     a: choice ? {} : collect("a"), b: choice ? {} : collect("b"), touched,
     choice: choice ? choicePick : null,
+    choiceNote: choice ? $("choice-note").value.trim() : "",
     issue: $("flag-issue").checked,
     note: $("flag-note").value.trim(),
   };
@@ -375,6 +383,7 @@ function restore(i) {
     [...$("choice-options").children].forEach((c) =>
       c.classList.toggle("selected", c.dataset.value === choicePick));
   }
+  if (ans.choiceNote) $("choice-note").value = ans.choiceNote;
   document.querySelectorAll("#rating input[type=range]").forEach((s) => {
     const side = s.dataset.side, cat = s.dataset.cat;
     if (ans[side][cat] !== undefined) s.value = ans[side][cat];
@@ -427,6 +436,9 @@ function renderItem() {
       t("choice_prompt") ||
       ((SESSION.choice_question && SESSION.choice_question.prompt) || "");
     buildChoices();
+    $("choice-note-label").textContent = t("choice_note_label");
+    $("choice-note").placeholder = t("choice_note_ph");
+    $("choice-note").value = "";      // cleared here, refilled by restore() below
   } else {
     buildSliders($("sliders-a"), "a");
     buildSliders($("sliders-b"), "b");
@@ -486,6 +498,7 @@ function sendRating(it, ans, elapsed) {
   };
   if (isChoice(it)) {
     if (ans.choice !== null && ans.choice !== undefined) payload.choice = ans.choice;
+    if (ans.choiceNote) payload.choice_note = ans.choiceNote;
   } else {
     payload.video_a = ans.a;
     payload.video_b = ans.b;
