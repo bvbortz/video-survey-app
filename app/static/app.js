@@ -357,9 +357,10 @@ function captureCurrent() {
   document.querySelectorAll("#rating input[type=range]").forEach((s) => {
     touched[`${s.dataset.side}_${s.dataset.cat}`] = s.dataset.touched === "1";
   });
+  const choice = isChoice();
   answers[idx] = {
-    a: collect("a"), b: collect("b"), touched,
-    choice: isChoice() ? choicePick : null,
+    a: choice ? {} : collect("a"), b: choice ? {} : collect("b"), touched,
+    choice: choice ? choicePick : null,
     issue: $("flag-issue").checked,
     note: $("flag-note").value.trim(),
   };
@@ -452,7 +453,10 @@ function collect(side) {
   const out = {};
   SESSION.rubric.forEach((cat) => {
     const s = document.querySelector(`input[data-side="${side}"][data-cat="${cat}"]`);
-    if (s.dataset.touched === "1") out[cat] = Number(s.value);
+    // A forced-choice item builds no sliders, so there is nothing to query. Without
+    // this guard the null deref threw inside captureCurrent(), which is the first
+    // thing submit() calls — so Next silently did nothing on every part-1 item.
+    if (s && s.dataset.touched === "1") out[cat] = Number(s.value);
   });
   return out;
 }
