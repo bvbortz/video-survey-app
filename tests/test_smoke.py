@@ -198,6 +198,19 @@ def _mixed_client(monkeypatch, n_choice_pairs=12):
     return TestClient(main.app), db
 
 
+def test_attention_checks_are_off(monkeypatch):
+    """No attention-check pair has ever been exported, so the branch was dead in
+    production. Kept explicit so a session's length is what the block sizes say."""
+    from app import assignment
+    assert assignment.N_ATTENTION == 0
+    c, db = _mixed_client(monkeypatch)
+    with c:
+        s = c.get("/api/session").json()
+        sess = asyncio.get_event_loop().run_until_complete(db.sessions.find_one({}))
+        assert all(a["kind"] == "real" for a in sess["assignments"])
+        assert len(s["items"]) == assignment.N_ITEMS_REAL
+
+
 def test_session_is_two_contiguous_blocks(monkeypatch):
     """Forced-choice pairs all come first, ratings all after. A rater must change
     task exactly once, at the labelled boundary — not item by item."""
@@ -209,7 +222,7 @@ def test_session_is_two_contiguous_blocks(monkeypatch):
             modes = [it["mode"] for it in s["items"]]
             assert modes == sorted(modes, key=lambda m: m != "2afc"), modes
             assert modes.count("2afc") == assignment.N_CHOICE
-            assert len(s["items"]) == assignment.N_ITEMS_REAL + assignment.N_ATTENTION
+            assert len(s["items"]) == assignment.N_ITEMS_REAL + assignment.N_ATTENTION  # attention is 0
             # no video is shown twice, across the block boundary included
             urls = [u for it in s["items"] for u in (it["video_a"], it["video_b"])]
             assert len(urls) == len(set(urls))
@@ -232,7 +245,7 @@ def test_no_choice_pairs_loaded_behaves_as_before(client):
     c, _ = client
     s = c.get("/api/session").json()
     assert all(it["mode"] == "mos" for it in s["items"])
-    assert len(s["items"]) == assignment.N_ITEMS_REAL + assignment.N_ATTENTION
+    assert len(s["items"]) == assignment.N_ITEMS_REAL + assignment.N_ATTENTION  # attention is 0
 
 
 def test_choice_rejected_on_rating_pair(client):
@@ -356,8 +369,10 @@ def test_retired_pairs_are_never_served(client):
 
     for _ in range(5):        # selection is randomised, so sample it
         s = c.get("/api/session").json()
-        assert {it["token"] for it in s["items"]} == {
-            pair_token("new00"), pair_token("newattn")}
+        # Only the live real pair. The live attention pair is absent because
+        # N_ATTENTION is 0, not because retirement excluded it — the assertion that
+        # matters here is that no *retired* pair appears.
+        assert {it["token"] for it in s["items"]} == {pair_token("new00")}
 
     # retired docs still exist and still carry the fields the admin $lookup needs
     old = loop.run_until_complete(db.pairs.find_one({"pair_id": "p00"}))

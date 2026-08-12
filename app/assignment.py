@@ -25,7 +25,13 @@ import random
 # known source of inconsistency, and the two formats ask for very different effort
 # (one decision vs ten slider drags).
 N_ITEMS_REAL = 9      # real pairs per session, split between the two blocks
-N_ATTENTION = 1       # dropped into the RATING block, which is where it works
+
+# Off. export_survey_pairs.py has always written is_attention_check: False for every
+# pair, so no attention-check pair has ever existed in the manifest and this branch
+# has been dead in production — sessions were 6 real pairs, not 7. The selection code
+# below still honours a non-zero value, so a designated obvious-failure pair can be
+# reintroduced by exporting one and raising this; nothing else needs to change.
+N_ATTENTION = 0
 
 # `base_vs_finetuned` is the comparison the paper's claim rests on and the only one
 # never asked directly, so it gets the larger block until it can actually answer:
