@@ -60,6 +60,37 @@ def main() -> int:
             [UpdateOne({"clip_id": c["clip_id"]}, {"$set": c}, upsert=True) for c in clips]
         )
 
+    # Carry Hebrew onto pairs that did not exist when it was pushed.
+    #
+    # The manifest has no prompt_text_he — translations live only here, written by
+    # push_hebrew_prompts.py and keyed on the English prompt_text. $set leaves the
+    # field alone on an existing pair, but a NEWLY inserted pair has never had it, so
+    # a new arm silently serves English to Hebrew raters. That is what happened to the
+    # 366 base_vs_finetuned pairs: every one of their prompts was already translated,
+    # just not on those documents.
+    #
+    # Copying from a sibling with the same English text needs no translation file and
+    # no re-run, and it cannot invent a translation that does not already exist.
+    untranslated = list(db.pairs.find(
+        {"$or": [{"prompt_text_he": {"$exists": False}}, {"prompt_text_he": None}]},
+        {"pair_id": 1, "prompt_text": 1}))
+    if untranslated:
+        known = {}
+        for d in db.pairs.find(
+                {"prompt_text_he": {"$exists": True, "$ne": None}},
+                {"prompt_text": 1, "prompt_text_he": 1}):
+            known.setdefault(d["prompt_text"], d["prompt_text_he"])
+        ops = [UpdateOne({"pair_id": d["pair_id"]},
+                         {"$set": {"prompt_text_he": known[d["prompt_text"]]}})
+               for d in untranslated if d.get("prompt_text") in known]
+        if ops:
+            db.pairs.bulk_write(ops)
+        print(f"  Hebrew backfilled onto {len(ops)} pairs")
+        still = len(untranslated) - len(ops)
+        if still:
+            print(f"  ! {still} pairs have no Hebrew anywhere — run "
+                  "scripts/push_hebrew_prompts.py with an updated i18n_prompts_he.json")
+
     # Retire by VERSION, not by pair_id: a version is one export of one generator, which
     # is exactly the unit being replaced. Doing it after the upsert means the pairs just
     # loaded are already active and can never retire themselves.
