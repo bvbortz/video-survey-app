@@ -70,11 +70,32 @@ def main() -> int:
         for en, he in translations.items()
         if en in db_prompts
     ]
-    print(f"\n{len(ops)} distinct prompt(s) to translate "
-          f"(spanning {pairs.count_documents({})} pair docs).")
+    # What the write would actually DO, per pair document. The previous version
+    # printed count_documents({}) here, which is the size of the whole collection and
+    # is the same number whether every pair is already translated or none is — so a
+    # dry run could not answer "how many are missing?", the one question it is for.
+    adds = changes = same = 0
+    for d in pairs.find({}, {"prompt_text": 1, "prompt_text_he": 1}):
+        he = translations.get(d.get("prompt_text"))
+        if he is None:
+            continue                       # no translation exists; reported above
+        current = d.get("prompt_text_he")
+        if current is None:
+            adds += 1
+        elif current != he:
+            changes += 1
+        else:
+            same += 1
+
+    print(f"\n{len(ops)} distinct prompt(s) map to Hebrew. Effect on pair docs:")
+    print(f"  would GAIN a translation (none today) : {adds}")
+    print(f"  would CHANGE an existing translation  : {changes}")
+    print(f"  already correct, no-op                : {same}")
+    if not adds and not changes:
+        print("  -> nothing to do; every pair is already translated.")
 
     if args.dry_run:
-        print("Dry run - no writes performed.")
+        print("\nDry run - no writes performed.")
         return 0
 
     result = pairs.bulk_write(ops, ordered=False)
