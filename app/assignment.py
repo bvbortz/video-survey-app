@@ -20,8 +20,21 @@ from __future__ import annotations
 import hashlib
 import random
 
-N_REAL = 6
-N_ATTENTION = 1
+# A session runs in two blocks: the forced-choice pairs first, then the rating pairs.
+# Raters do not switch task format item by item — mode-switching mid-session is a
+# known source of inconsistency, and the two formats ask for very different effort
+# (one decision vs ten slider drags).
+N_ITEMS_REAL = 9      # real pairs per session, split between the two blocks
+N_ATTENTION = 1       # dropped into the RATING block, which is where it works
+
+# `base_vs_finetuned` is the comparison the paper's claim rests on and the only one
+# never asked directly, so it gets the larger block until it can actually answer:
+# ~542 non-tie responses for a 56/44 split, ~194 for 60/40. Past the target it drops
+# to a maintenance share and the rating arms get the slots back — the X-vs-short data
+# is what the evaluator-agreement analysis is built on, so it must not starve either.
+N_CHOICE = 5
+N_CHOICE_SATED = 2
+CHOICE_TARGET = 542
 
 # Retired pairs stay in the collection so old responses can still be joined back to
 # their arm/generator (the admin stats do exactly that), but they are never handed
@@ -70,16 +83,30 @@ def _round_robin(pool: list[dict], n: int, chosen: list[dict], used_clips: set) 
                 used_clips |= _clips(p)
 
 
-def _select(reals: list[dict], n: int, seen_clips: set) -> list[dict]:
+def _select(reals: list[dict], n: int, seen_clips: set,
+            used_clips: set | None = None) -> list[dict]:
     """Pick n pairs. First pass excludes clips the rater has already seen; if that
     can't fill the session (a rater who's done many rounds), a second pass relaxes
-    the cross-round exclusion but still never repeats a clip within this session."""
+    the cross-round exclusion but still never repeats a clip within this session.
+
+    `used_clips`, when given, is shared across the two blocks and mutated, so a clip
+    taken by the forced-choice block cannot reappear in the rating block. That matters
+    here specifically: base_vs_finetuned shares its base clip with short_vs_base and
+    its finetuned clip with short_vs_finetuned, so without it a rater would see the
+    same video twice in one session.
+    """
     chosen: list[dict] = []
-    _round_robin(reals, n, chosen, set(seen_clips))
+    blocked = set(seen_clips) | set(used_clips or ())
+    _round_robin(reals, n, chosen, blocked)
     if len(chosen) < n:
-        within = set().union(*(_clips(p) for p in chosen)) if chosen else set()
+        within = set(used_clips or ())
+        within |= set().union(*(_clips(p) for p in chosen)) if chosen else set()
         _round_robin(reals, n, chosen, within)
-    return chosen[:n]
+    chosen = chosen[:n]
+    if used_clips is not None:
+        for p in chosen:
+            used_clips |= _clips(p)
+    return chosen
 
 
 def _make_item(pair: dict, kind: str) -> dict:
@@ -89,9 +116,22 @@ def _make_item(pair: dict, kind: str) -> dict:
     return {"pair_id": pair["pair_id"], "kind": kind, "order": order, "pair": pair}
 
 
+async def _choice_block_size(db) -> int:
+    """How many forced-choice slots this session gets.
+
+    Counts responses already collected for the forced-choice arm; once that arm can
+    answer its own question the block shrinks and the rating arms get the slots back.
+    """
+    try:
+        have = await db.responses.count_documents({"mode": "2afc"})
+    except Exception:            # a counting failure must never deny someone a session
+        return N_CHOICE
+    return N_CHOICE if have < CHOICE_TARGET else N_CHOICE_SATED
+
+
 async def build_session_items(
     db, seen_tokens: set | None = None,
-    n_real: int = N_REAL, n_attention: int = N_ATTENTION,
+    n_real: int = N_ITEMS_REAL, n_attention: int = N_ATTENTION,
 ) -> list[dict]:
     seen_tokens = set(seen_tokens or ())
     counts = await _judged_counts(db)
@@ -107,17 +147,30 @@ async def build_session_items(
             if pair_token(p["pair_id"]) in seen_tokens:
                 seen_clips |= _clips(p)
 
-    chosen = _select(reals, n_real, seen_clips)
+    # Absent mode == rating, matching the manifest and the app. A deployment with no
+    # forced-choice pairs loaded therefore behaves exactly as it did before.
+    choice_pool = [p for p in reals if p.get("mode") == "2afc"]
+    rating_pool = [p for p in reals if p.get("mode") != "2afc"]
+
+    n_choice = min(await _choice_block_size(db), n_real) if choice_pool else 0
+    used_clips: set = set()
+    chosen_choice = _select(choice_pool, n_choice, seen_clips, used_clips)
+    # Whatever the choice block could not fill goes to ratings, so the session is
+    # still full when one pool runs out for this particular rater.
+    chosen_rating = _select(rating_pool, n_real - len(chosen_choice),
+                            seen_clips, used_clips)
 
     attn = [p async for p in db.pairs.find({"is_attention_check": True, **ACTIVE})]
     random.shuffle(attn)
     attn = attn[:n_attention]
 
-    real_items = [_make_item(p, "real") for p in chosen]
-    attn_items = [_make_item(p, "attention") for p in attn]
+    choice_items = [_make_item(p, "real") for p in chosen_choice]
+    rating_items = [_make_item(p, "real") for p in chosen_rating]
 
-    random.shuffle(real_items)
-    seq = list(real_items)
-    for a in attn_items:                      # drop attention check(s) mid-session
-        seq.insert(max(1, len(seq) // 2), a)
-    return seq
+    # Shuffle WITHIN each block, never across: the blocks stay contiguous so the rater
+    # changes task exactly once, at a boundary the page labels.
+    random.shuffle(choice_items)
+    random.shuffle(rating_items)
+    for a in attn:              # the attention check is a rating pair, so it goes there
+        rating_items.insert(max(1, len(rating_items) // 2), _make_item(a, "attention"))
+    return choice_items + rating_items

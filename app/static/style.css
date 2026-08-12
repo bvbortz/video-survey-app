@@ -36,6 +36,29 @@ button.secondary {
 button.secondary:disabled { color: var(--muted); cursor: not-allowed; }
 a { color: var(--accent); }
 
+/* which of the two blocks the rater is in */
+.section-label {
+  margin: 0 0 6px; font-size: .82rem; font-weight: 600;
+  letter-spacing: .02em; color: var(--accent);
+}
+
+/* forced choice (mode == "2afc"): one decision instead of ten sliders */
+.choice-row { margin: 20px 0 4px; }
+.choice-prompt { margin: 0 0 12px; font-size: 1.05rem; color: var(--fg); }
+.choice-options { display: flex; flex-wrap: wrap; gap: 10px; }
+.choice-btn {
+  flex: 1 1 200px; padding: 14px 16px; font: inherit; text-align: center;
+  background: #0b0d11; color: var(--fg); border: 1px solid var(--border);
+  border-radius: 10px; cursor: pointer;
+}
+.choice-btn:hover { border-color: var(--accent); }
+/* Selection must survive a colour-blind reader, so it is not carried by hue
+   alone: the border thickens and the weight changes too. */
+.choice-btn.selected {
+  border: 2px solid var(--accent); font-weight: 600;
+  background: color-mix(in srgb, var(--accent) 14%, #0b0d11);
+}
+
 /* impossible-prompt flag */
 .flag-row { margin: 22px 0 4px; }
 .flag-label { display: flex; align-items: flex-start; gap: 8px; font-size: .9rem; color: var(--fg); cursor: pointer; }

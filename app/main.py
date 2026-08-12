@@ -37,6 +37,23 @@ RUBRIC = [
     "visual_quality", "physical_realism",
 ]
 
+# Forced-choice pairs (mode == "2afc") collect this instead of the rubric. Used for
+# base_vs_finetuned, the comparison every other arm can only reach indirectly: rating
+# two clips 0-10 and subtracting carries more noise (between-rater sd 0.90, within-rater
+# 1.12) than the ~0.3 MOS effect being looked for.
+#
+# Pairs loaded before this existed have no `mode` field, so absent == "mos" — the same
+# convention `active` uses. A pair only becomes forced-choice by saying so.
+DEFAULT_MODE = "mos"
+CHOICE_QUESTION = {
+    "prompt": "Which video better matches the description, and looks more realistic?",
+    "options": [
+        {"value": "A", "label": "Video A is clearly better"},
+        {"value": "B", "label": "Video B is clearly better"},
+        {"value": "tie", "label": "About the same"},
+    ],
+}
+
 CONSENT_TEXT = (
     "This is an anonymous academic research survey on AI-generated video quality. "
     "You will watch pairs of short videos and rate each one on six aspects. "
@@ -88,8 +105,12 @@ async def create_session(seen: str = ""):
 
     session_id = str(uuid.uuid4())
     # what we persist (server-side truth for resolving A/B -> leg on submit)
+    # `mode` is persisted with the assignment so submit can reject a payload of the
+    # wrong shape without re-reading the pair, and so a pair whose mode is changed
+    # mid-session cannot invalidate answers already given under the old one.
     assignments = [
-        {"index": i, "pair_id": it["pair_id"], "kind": it["kind"], "order": it["order"]}
+        {"index": i, "pair_id": it["pair_id"], "kind": it["kind"], "order": it["order"],
+         "mode": it["pair"].get("mode", DEFAULT_MODE)}
         for i, it in enumerate(items)
     ]
     await db.sessions.insert_one({
@@ -112,12 +133,14 @@ async def create_session(seen: str = ""):
             "image_url": _video_url(it["pair"]["image_file"]) if it["pair"].get("image_file") else None,
             "video_a": _video_url(legs[a_leg]["file"]),
             "video_b": _video_url(legs[b_leg]["file"]),
+            "mode": it["pair"].get("mode", DEFAULT_MODE),
         })
 
     return {
         "session_id": session_id,
         "consent": CONSENT_TEXT,
         "rubric": RUBRIC,
+        "choice_question": CHOICE_QUESTION,
         "items": client_items,
     }
 
@@ -146,8 +169,12 @@ class Scores(BaseModel):
 class ResponseIn(BaseModel):
     session_id: str
     index: int = Field(ge=0)
-    video_a: Scores
-    video_b: Scores
+    video_a: Scores = Field(default_factory=Scores)
+    video_b: Scores = Field(default_factory=Scores)
+    # Forced-choice answer for mode == "2afc" pairs. "A"/"B" are display positions;
+    # submit_response resolves them to the leg before storing, because the position
+    # is meaningless once the session's randomisation is gone.
+    choice: Optional[str] = None
     elapsed_ms: int = Field(ge=0)
     # rater flags a problem with this pair (impossible/mismatched prompt, NSFW, other);
     # `note` describes what's wrong
@@ -156,8 +183,20 @@ class ResponseIn(BaseModel):
 
     # Unflagged responses must be complete (scene_fidelity exempt: pre-2026-07-11
     # cached clients don't have that slider). Flagged responses may be partial.
+    @field_validator("choice")
+    @classmethod
+    def known_choice(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in {"A", "B", "tie"}:
+            raise ValueError("choice must be A, B or tie")
+        return v
+
     @model_validator(mode="after")
     def full_scores_unless_flagged(self):
+        # A forced-choice submission carries no rubric scores, so the completeness
+        # rule below does not apply to it. Whether this pair was actually served as
+        # forced choice is checked in submit_response, which knows the assignment.
+        if self.choice is not None:
+            return self
         if not self.flag_issue:
             required = [d for d in RUBRIC if d != "scene_fidelity"]
             for label, scores in (("video_a", self.video_a), ("video_b", self.video_b)):
@@ -195,6 +234,16 @@ async def submit_response(body: ResponseIn, background: BackgroundTasks):
         raise HTTPException(400, "bad item index")
 
     a_leg, b_leg = assignment["order"][0], assignment["order"][1]
+    mode = assignment.get("mode", DEFAULT_MODE)
+
+    # Reject a payload of the wrong shape rather than storing a response that looks
+    # like the other kind. A 2afc pair answered with sliders, or a mos pair answered
+    # with a choice, means the client and the server disagree about what was shown.
+    if mode == "2afc" and body.choice is None and not body.flag_issue:
+        raise HTTPException(400, "this pair was served as a forced choice; `choice` required")
+    if mode != "2afc" and body.choice is not None:
+        raise HTTPException(400, "this pair was served for rating; `choice` not accepted")
+
     # de-dupe key is (session, index), so the upsert is idempotent and a client
     # retry after a timeout cannot double-count.
     doc = {
@@ -202,17 +251,28 @@ async def submit_response(body: ResponseIn, background: BackgroundTasks):
         "index": body.index,
         "pair_id": assignment["pair_id"],
         "kind": assignment["kind"],
+        "mode": mode,
         "created_at": _now(),
         "elapsed_ms": body.elapsed_ms,
-        "ratings": {                       # stored resolved to leg identity
+        "flag_issue": body.flag_issue,
+        "note": body.note.strip(),
+    }
+    if mode == "2afc":
+        # Stored as the leg, never as the display letter: "A" is meaningless once this
+        # session's randomisation is gone, and every analysis joins on leg identity.
+        doc["choice_leg"] = (
+            None if body.choice is None else
+            "tie" if body.choice == "tie" else
+            (a_leg if body.choice == "A" else b_leg)
+        )
+        doc["shown_as"] = body.choice
+    else:
+        doc["ratings"] = {                 # stored resolved to leg identity
             # exclude_none: a pre-2026-07-11 cached client may omit scene_fidelity;
             # analysis treats the absent key as 10.
             a_leg: body.video_a.model_dump(exclude_none=True),
             b_leg: body.video_b.model_dump(exclude_none=True),
-        },
-        "flag_issue": body.flag_issue,
-        "note": body.note.strip(),
-    }
+        }
     # Validation and leg resolution have already happened, so the rater gets their
     # answer now and the write lands after. Atlas is a free tier in another region
     # and a write can take tens of seconds; making someone sit through that once per

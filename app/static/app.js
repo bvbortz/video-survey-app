@@ -42,6 +42,20 @@ const I18N = {
     next_hint:
       "To continue, move every slider for both videos — or tick the “there’s a " +
       "problem” box above if this pair can’t be rated.",
+    // Forced-choice pairs. Kept here rather than taken from the server so the
+    // question reads naturally in both languages; the server's wording is the
+    // fallback and stays the record of what was asked.
+    choice_prompt: "Which video better matches the description, and looks more realistic?",
+    choice_a: "Video A is clearly better",
+    choice_b: "Video B is clearly better",
+    choice_tie: "About the same",
+    // Both parts are real data; the wording deliberately avoids calling part 1 a
+    // warm-up, because those answers are the ones the study most depends on.
+    section_choice: (i, n) => `Part 1 of 2 — quick comparisons (${i} of ${n})`,
+    section_rating: (i, n) => `Part 2 of 2 — detailed ratings (${i} of ${n})`,
+    next_hint_choice:
+      "To continue, pick one of the three options above — or tick the “there’s a " +
+      "problem” box if this pair can’t be judged.",
     done_title: "Thank you!",
     done_text: "Your ratings were recorded. You may close this tab, or",
     again: "rate another set",
@@ -112,6 +126,15 @@ const I18N = {
     next_hint:
       "כדי להמשיך, הזיזו כל מחוון בשני הסרטונים — או סמנו את התיבה 'יש בעיה' למעלה " +
       "אם לא ניתן לדרג את הזוג הזה.",
+    choice_prompt: "איזה וידאו תואם יותר לתיאור ונראה מציאותי יותר?",
+    choice_a: "וידאו A טוב יותר באופן ברור",
+    choice_b: "וידאו B טוב יותר באופן ברור",
+    choice_tie: "בערך אותו דבר",
+    section_choice: (i, n) => `חלק 1 מתוך 2 — השוואות מהירות (${i} מתוך ${n})`,
+    section_rating: (i, n) => `חלק 2 מתוך 2 — דירוגים מפורטים (${i} מתוך ${n})`,
+    next_hint_choice:
+      "כדי להמשיך, בחרו אחת משלוש האפשרויות למעלה — או סמנו את התיבה 'יש בעיה' " +
+      "אם לא ניתן לשפוט את הזוג הזה.",
     done_title: "תודה!",
     done_text: "הדירוגים שלכם נשמרו. אפשר לסגור את הכרטיסייה הזו, או",
     again: "לדרג מערך נוסף",
@@ -271,9 +294,40 @@ function allTouched() {
     .every((s) => s.dataset.touched === "1");
 }
 
+// Forced-choice pairs (base vs finetuned) ask for one decision instead of ten
+// sliders. The mode comes from the server per item; anything unset is a rating pair.
+function isChoice(it) {
+  return (it || SESSION.items[idx]).mode === "2afc";
+}
+
+let choicePick = null;   // "A" | "B" | "tie" | null, for the item on screen
+
+function buildChoices() {
+  const box = $("choice-options");
+  box.innerHTML = "";
+  const opts = (SESSION.choice_question && SESSION.choice_question.options) || [];
+  opts.forEach((opt) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "choice-btn";
+    b.dataset.value = opt.value;
+    // Translated label where we have one, else the server's wording — which stays
+    // the record of what was actually asked.
+    b.textContent = t(`choice_${opt.value.toLowerCase()}`) || opt.label;
+    b.addEventListener("click", () => {
+      choicePick = opt.value;
+      [...box.children].forEach((c) =>
+        c.classList.toggle("selected", c.dataset.value === choicePick));
+      updateNav();
+    });
+    box.appendChild(b);
+  });
+}
+
 // A flagged pair may be submitted with partial (or no) ratings — the flag + note
 // are the signal; untouched sliders are simply not sent.
 function canProceed() {
+  if (isChoice()) return choicePick !== null || $("flag-issue").checked;
   return allTouched() || $("flag-issue").checked;
 }
 
@@ -281,6 +335,7 @@ function updateNav() {
   const ok = canProceed();
   $("next-btn").disabled = !ok;
   $("next-hint").classList.toggle("hidden", ok);
+  $("next-hint").textContent = isChoice() ? t("next_hint_choice") : t("next_hint");
 }
 
 function onSlider(e) {
@@ -304,6 +359,7 @@ function captureCurrent() {
   });
   answers[idx] = {
     a: collect("a"), b: collect("b"), touched,
+    choice: isChoice() ? choicePick : null,
     issue: $("flag-issue").checked,
     note: $("flag-note").value.trim(),
   };
@@ -313,6 +369,11 @@ function captureCurrent() {
 function restore(i) {
   const ans = answers[i];
   if (!ans) return;
+  if (ans.choice !== null && ans.choice !== undefined) {
+    choicePick = ans.choice;
+    [...$("choice-options").children].forEach((c) =>
+      c.classList.toggle("selected", c.dataset.value === choicePick));
+  }
   document.querySelectorAll("#rating input[type=range]").forEach((s) => {
     const side = s.dataset.side, cat = s.dataset.cat;
     if (ans[side][cat] !== undefined) s.value = ans[side][cat];
@@ -347,10 +408,30 @@ function renderItem() {
   $("video-a").src = it.video_a;
   $("video-b").src = it.video_b;
 
-  buildSliders($("sliders-a"), "a");
-  buildSliders($("sliders-b"), "b");
-  document.querySelectorAll("#rating input[type=range]")
-    .forEach((s) => s.addEventListener("input", onSlider));
+  // Position within the current block, so the rater sees "3 of 5" for the part they
+  // are in rather than a running count across two different tasks.
+  const choice = isChoice(it);
+  const block = SESSION.items.filter((x) => isChoice(x) === choice);
+  const posInBlock = block.indexOf(it) + 1;
+  $("section-label").textContent =
+    (choice ? t("section_choice") : t("section_rating"))(posInBlock, block.length);
+
+  // Exactly one of the two answer UIs is live per item.
+  choicePick = null;
+  $("choice-block").classList.toggle("hidden", !choice);
+  $("sliders-a").classList.toggle("hidden", choice);
+  $("sliders-b").classList.toggle("hidden", choice);
+  if (choice) {
+    $("choice-prompt").textContent =
+      t("choice_prompt") ||
+      ((SESSION.choice_question && SESSION.choice_question.prompt) || "");
+    buildChoices();
+  } else {
+    buildSliders($("sliders-a"), "a");
+    buildSliders($("sliders-b"), "b");
+    document.querySelectorAll("#rating input[type=range]")
+      .forEach((s) => s.addEventListener("input", onSlider));
+  }
 
   // reset flag UI, then restore any prior answer for this item
   $("flag-issue").checked = false;
@@ -390,15 +471,22 @@ const pendingSaves = [];
 let saveFailures = 0;
 
 function sendRating(it, ans, elapsed) {
-  const body = JSON.stringify({
+  // The server rejects a payload of the wrong shape for the pair's mode, so send
+  // the choice OR the sliders, never both.
+  const payload = {
     session_id: SESSION.session_id,
     index: it.index,
-    video_a: ans.a,
-    video_b: ans.b,
     elapsed_ms: elapsed,
     flag_issue: ans.issue,
     note: ans.note,
-  });
+  };
+  if (isChoice(it)) {
+    if (ans.choice !== null && ans.choice !== undefined) payload.choice = ans.choice;
+  } else {
+    payload.video_a = ans.a;
+    payload.video_b = ans.b;
+  }
+  const body = JSON.stringify(payload);
   const post = () => fetch("/api/response", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

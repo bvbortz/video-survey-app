@@ -31,7 +31,9 @@ def client(monkeypatch):
 
     db = AsyncMongoMockClient()["survey"]
     pairs = []
-    for i in range(8):
+    # Comfortably more than one session's worth (N_ITEMS_REAL), so the cross-round
+    # exclusion is exercised rather than defeated by an exhausted pool.
+    for i in range(24):
         arm = "short_vs_finetuned" if i % 2 else "short_vs_base"
         other = "finetuned" if i % 2 else "base"
         pairs.append(_pair(f"p{i:02d}", arm, f"p{i:02d}_s.mp4", other, f"p{i:02d}_o.mp4"))
@@ -53,8 +55,11 @@ def test_session_and_response(client):
     # leg identity must not leak to the client: items expose only opaque A/B slots
     # (token is an opaque per-pair hash, used for cross-round dedup)
     for it in s["items"]:
+        # `mode` says which answer UI to render; it says nothing about which leg
+        # landed on which side, so it does not weaken this guard.
         assert set(it) == {"index", "token", "prompt_text", "prompt_text_he",
-                           "image_url", "video_a", "video_b"}
+                           "image_url", "video_a", "video_b", "mode"}
+        assert it["mode"] in {"mos", "2afc"}
     it = s["items"][0]
     assert it["video_a"].startswith("https://cdn.example/videos/")
 
@@ -75,6 +80,168 @@ def test_session_and_response(client):
     assert len(doc["ratings"]) == 2
     assert doc["flag_issue"] is True
     assert doc["note"] == "NSFW content in video B"
+
+
+def test_pairs_without_mode_default_to_rating(client):
+    """Every pair loaded before forced choice existed has no `mode` field. Absent
+    must mean "mos" — if it ever defaulted the other way, raters would be shown a
+    choice for pairs the analysis expects rubric scores from."""
+    c, _ = client
+    s = c.get("/api/session").json()
+    assert {it["mode"] for it in s["items"]} == {"mos"}
+
+
+def _choice_client(monkeypatch):
+    """A session whose only real pairs are forced choice."""
+    from starlette.testclient import TestClient
+    db = AsyncMongoMockClient()["survey"]
+    pairs = []
+    for i in range(8):
+        p = _pair(f"c{i:02d}", "base_vs_finetuned", f"c{i:02d}_b.mp4",
+                  "finetuned", f"c{i:02d}_f.mp4")
+        p["legs"][0]["leg"] = "base"          # base vs finetuned; short not involved
+        p["legs"][0]["clip_id"] = f"c{i:02d}_base"
+        p["mode"] = "2afc"
+        pairs.append(p)
+    pairs.append(_pair("attnC", "short_vs_base", "b_s.mp4", "base", "b_o.mp4", attention=True))
+    asyncio.get_event_loop().run_until_complete(db.pairs.insert_many(pairs))
+    dbmod.set_db(db)
+    monkeypatch.setattr(main, "VIDEO_BASE_URL", "https://cdn.example/videos")
+    monkeypatch.setattr(main, "ADMIN_SECRET", "s3cret")
+    return TestClient(main.app), db
+
+
+def test_forced_choice_stores_leg_not_letter(monkeypatch):
+    c, db = _choice_client(monkeypatch)
+    with c:
+        s = c.get("/api/session").json()
+        assert s["choice_question"]["prompt"]
+        it = next(i for i in s["items"] if i["mode"] == "2afc")
+
+        r = c.post("/api/response", json={
+            "session_id": s["session_id"], "index": it["index"],
+            "choice": "A", "elapsed_ms": 900,
+        })
+        assert r.status_code == 200
+
+        doc = asyncio.get_event_loop().run_until_complete(
+            db.responses.find_one({"session_id": s["session_id"], "index": it["index"]}))
+        # The whole point: "A" is a display position and is meaningless once this
+        # session's randomisation is gone, so the leg must be resolved on write.
+        assert doc["choice_leg"] in {"base", "finetuned"}
+        assert doc["shown_as"] == "A"
+        assert doc["mode"] == "2afc"
+        assert "ratings" not in doc
+
+        # and it matches the server's own A/B order for this assignment
+        sess = asyncio.get_event_loop().run_until_complete(
+            db.sessions.find_one({"session_id": s["session_id"]}))
+        order = next(a["order"] for a in sess["assignments"] if a["index"] == it["index"])
+        assert doc["choice_leg"] == order[0]
+
+
+def test_forced_choice_tie_and_shape_mismatches(monkeypatch):
+    c, db = _choice_client(monkeypatch)
+    with c:
+        s = c.get("/api/session").json()
+        items = [i for i in s["items"] if i["mode"] == "2afc"]
+
+        # a tie is a real answer, not a missing one
+        assert c.post("/api/response", json={
+            "session_id": s["session_id"], "index": items[0]["index"],
+            "choice": "tie", "elapsed_ms": 800}).status_code == 200
+        doc = asyncio.get_event_loop().run_until_complete(
+            db.responses.find_one({"index": items[0]["index"]}))
+        assert doc["choice_leg"] == "tie"
+
+        # sliders sent for a forced-choice pair: the client and server disagree
+        # about what was shown, so this must not be stored as if it were a rating
+        assert c.post("/api/response", json={
+            "session_id": s["session_id"], "index": items[1]["index"],
+            "video_a": {k: 7 for k in s["rubric"]},
+            "video_b": {k: 3 for k in s["rubric"]},
+            "elapsed_ms": 800}).status_code == 400
+
+        # unknown choice value
+        assert c.post("/api/response", json={
+            "session_id": s["session_id"], "index": items[1]["index"],
+            "choice": "maybe", "elapsed_ms": 800}).status_code == 422
+
+        # a flagged forced-choice pair may be submitted with no choice at all
+        assert c.post("/api/response", json={
+            "session_id": s["session_id"], "index": items[1]["index"],
+            "elapsed_ms": 800, "flag_issue": True,
+            "note": "prompt impossible"}).status_code == 200
+
+
+def _mixed_client(monkeypatch, n_choice_pairs=12):
+    """Both pools populated, as production will be."""
+    from starlette.testclient import TestClient
+    db = AsyncMongoMockClient()["survey"]
+    pairs = []
+    for i in range(24):
+        arm = "short_vs_finetuned" if i % 2 else "short_vs_base"
+        other = "finetuned" if i % 2 else "base"
+        pairs.append(_pair(f"m{i:02d}", arm, f"m{i:02d}_s.mp4", other, f"m{i:02d}_o.mp4"))
+    for i in range(n_choice_pairs):
+        p = _pair(f"x{i:02d}", "base_vs_finetuned", f"x{i:02d}_b.mp4",
+                  "finetuned", f"x{i:02d}_f.mp4")
+        p["legs"][0]["leg"] = "base"
+        p["legs"][0]["clip_id"] = f"x{i:02d}_base"
+        p["mode"] = "2afc"
+        pairs.append(p)
+    pairs.append(_pair("attnM", "short_vs_base", "b_s.mp4", "base", "b_o.mp4", attention=True))
+    asyncio.get_event_loop().run_until_complete(db.pairs.insert_many(pairs))
+    dbmod.set_db(db)
+    monkeypatch.setattr(main, "VIDEO_BASE_URL", "https://cdn.example/videos")
+    monkeypatch.setattr(main, "ADMIN_SECRET", "s3cret")
+    return TestClient(main.app), db
+
+
+def test_session_is_two_contiguous_blocks(monkeypatch):
+    """Forced-choice pairs all come first, ratings all after. A rater must change
+    task exactly once, at the labelled boundary — not item by item."""
+    from app import assignment
+    c, _ = _mixed_client(monkeypatch)
+    with c:
+        for _ in range(5):                    # selection is random; check it holds
+            s = c.get("/api/session").json()
+            modes = [it["mode"] for it in s["items"]]
+            assert modes == sorted(modes, key=lambda m: m != "2afc"), modes
+            assert modes.count("2afc") == assignment.N_CHOICE
+            assert len(s["items"]) == assignment.N_ITEMS_REAL + assignment.N_ATTENTION
+            # no video is shown twice, across the block boundary included
+            urls = [u for it in s["items"] for u in (it["video_a"], it["video_b"])]
+            assert len(urls) == len(set(urls))
+
+
+def test_choice_block_shrinks_once_the_arm_has_enough(monkeypatch):
+    from app import assignment
+    c, db = _mixed_client(monkeypatch)
+    monkeypatch.setattr(assignment, "CHOICE_TARGET", 3)
+    with c:
+        asyncio.get_event_loop().run_until_complete(db.responses.insert_many(
+            [{"session_id": "old", "index": i, "mode": "2afc"} for i in range(4)]))
+        s = c.get("/api/session").json()
+        assert [it["mode"] for it in s["items"]].count("2afc") == assignment.N_CHOICE_SATED
+
+
+def test_no_choice_pairs_loaded_behaves_as_before(client):
+    """The old deployment shape: nothing is 2afc, so the session is all ratings."""
+    from app import assignment
+    c, _ = client
+    s = c.get("/api/session").json()
+    assert all(it["mode"] == "mos" for it in s["items"])
+    assert len(s["items"]) == assignment.N_ITEMS_REAL + assignment.N_ATTENTION
+
+
+def test_choice_rejected_on_rating_pair(client):
+    c, _ = client
+    s = c.get("/api/session").json()
+    it = s["items"][0]
+    assert c.post("/api/response", json={
+        "session_id": s["session_id"], "index": it["index"],
+        "choice": "A", "elapsed_ms": 500}).status_code == 400
 
 
 def test_seen_pair_excluded_next_round(client):

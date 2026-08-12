@@ -27,6 +27,7 @@
       <div class="progress"><div id="progress-bar"></div></div>
       <p class="counter"><span id="counter"></span></p>
       <p class="prompt"><span id="prompt-label"></span> “<span id="prompt-text"></span>”</p>
+      <p id="section-label" class="section-label"></p>
       <p id="hint-line" class="hint"></p>
 
       <div class="stage">
@@ -46,6 +47,13 @@
             <div class="sliders" id="sliders-b"></div>
           </div>
         </div>
+      </div>
+
+      <!-- Forced-choice pairs (mode == "2afc") use this instead of the sliders.
+           Both blocks always exist; renderItem shows exactly one. -->
+      <div id="choice-block" class="choice-row hidden">
+        <p id="choice-prompt" class="choice-prompt"></p>
+        <div id="choice-options" class="choice-options"></div>
       </div>
 
       <div class="flag-row">
