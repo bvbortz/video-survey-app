@@ -64,9 +64,11 @@ localStorage.clear();
 </script>
 <script>{(STATIC / 'app.js').read_text()}</script>
 <script>
-setTimeout(() => {{
+setTimeout(async () => {{
   const out = {{}};
-  try {{ ({driver_js})(out); }} catch (e) {{ out.thrown = String(e); }}
+  // Drivers may be async: submit() awaits the pending saves before showing the done
+  // screen, so anything checking end-of-session state has to wait for that too.
+  try {{ await ({driver_js})(out); }} catch (e) {{ out.thrown = String(e); }}
   out.errors = window.__err;
   document.title = "RESULT " + JSON.stringify(out);
 }}, 300);
@@ -158,6 +160,39 @@ def test_choice_note_is_optional_and_survives_back(tmp_path):
     assert out["item3NoteAfterAdvance"] == "", "note leaked to the next item"
     assert out["noteRestoredOnBack"] == "the dog's legs merge together"
     assert out["pickRestoredOnBack"] == "B"
+
+
+def test_finish_completes_the_session(tmp_path):
+    """Clicking Finish on the last item must reach the done screen.
+
+    The regression: submit() increments idx past the end before setBusy(false)
+    recomputes canProceed(), so isChoice() was asked about SESSION.items[idx] when
+    that is undefined. The throw landed between setBusy(true) and show("done") —
+    Finish stayed disabled, the rating screen stayed up, and nothing said why.
+    Every earlier test stopped one click short of this.
+    """
+    out = _run("""async (out) => {
+        document.getElementById("start-btn").click();
+        for (let i = 0; i < 5; i++) {
+          document.querySelector('.choice-btn[data-value="A"]').click();
+          document.getElementById("next-btn").click();
+        }
+        for (let r = 0; r < 4; r++) {
+          document.querySelectorAll("#rating input[type=range]")
+            .forEach(s => { s.value = 7; s.dispatchEvent(new Event("input")); });
+          document.getElementById("next-btn").click();   // includes the final Finish
+        }
+        await new Promise(r => setTimeout(r, 100));      // submit() awaits its saves
+        out.doneShown = !document.getElementById("done").classList.contains("hidden");
+        out.ratingHidden = document.getElementById("rating").classList.contains("hidden");
+        out.posts = window.__posts.length;
+        out.progress = document.getElementById("progress-bar").style.width;
+    }""", tmp_path)
+    assert out["errors"] == [] and "thrown" not in out
+    assert out["posts"] == 9, f"every item must be submitted, got {out['posts']}"
+    assert out["doneShown"] is True, "Finish did not reach the done screen"
+    assert out["ratingHidden"] is True
+    assert out["progress"] == "100%"
 
 
 def test_rating_item_still_needs_every_slider(tmp_path):

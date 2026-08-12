@@ -304,7 +304,13 @@ function allTouched() {
 // Forced-choice pairs (base vs finetuned) ask for one decision instead of ten
 // sliders. The mode comes from the server per item; anything unset is a rating pair.
 function isChoice(it) {
-  return (it || SESSION.items[idx]).mode === "2afc";
+  // Tolerates being asked about nothing. submit() increments idx past the last item
+  // before calling setBusy(false), which recomputes canProceed() -> isChoice() with
+  // SESSION.items[idx] undefined. Dereferencing that threw, and the throw happened
+  // between setBusy(true) and show("done"), so the survey froze on the last item with
+  // Finish stuck disabled and no error on screen.
+  const item = it || (SESSION && SESSION.items[idx]);
+  return !!item && item.mode === "2afc";
 }
 
 let choicePick = null;   // "A" | "B" | "tie" | null, for the item on screen
