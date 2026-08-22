@@ -14,15 +14,22 @@ const I18N = {
     consent_title: "AI Video Quality Survey",
     consent_text:
       "This is an anonymous academic research survey on AI-generated video quality. " +
-      "You will watch pairs of short videos and rate each one on six aspects. " +
-      "It takes about 8-10 minutes. No personal data is collected (only an anonymous " +
-      "session id). Participation is voluntary and you may stop at any time. " +
+      "You will see pairs of short videos and pick the one that better matches its " +
+      "description. Each comparison takes well under a minute — do as few or as many " +
+      "as you like, and stop whenever you want. No personal data is collected (only " +
+      "an anonymous session id). Participation is voluntary. " +
       "By pressing Start you consent to participate.",
+    // Some prompts carry one deliberately wrong detail. The previous wording told
+    // raters to flag exactly that as a problem, which would have thrown away the
+    // subgroup this round exists to measure.
     setup_note:
       "ℹ️ The <strong>starting image is a real photo</strong>. The prompt and both " +
-      "videos (A and B) are <strong>AI-generated</strong> — so a prompt may " +
-      "occasionally describe something that can’t happen given the image. If that " +
-      "occurs, rate what you actually see and tick the box on that screen.",
+      "videos (A and B) are <strong>AI-generated</strong>. Some prompts " +
+      "<strong>deliberately contain a small detail that does not match the image</strong> " +
+      "— a wrong colour, count, or object. That is intentional and part of what we are " +
+      "testing: still just pick the video that handles the description better. " +
+      "Use the “there’s a problem” box only when a pair is genuinely unusable — a video " +
+      "will not play, or the content is inappropriate.",
     start: "Start",
     requested_action: "Requested action:",
     hint_line: "Starting image = real photo · prompt & both videos = AI-generated",
@@ -61,9 +68,13 @@ const I18N = {
     next_hint_choice:
       "To continue, pick one of the three options above — or tick the “there’s a " +
       "problem” box if this pair can’t be judged.",
-    done_title: "Thank you!",
-    done_text: "Your ratings were recorded. You may close this tab, or",
-    again: "rate another set",
+    done_title: "Saved — thank you!",
+    done_tally: (n) => n === 1
+      ? "That is 1 comparison you have contributed."
+      : `That is ${n} comparisons you have contributed.`,
+    done_text: "Prefer to score videos in detail instead?",
+    again: "Keep going →",
+    switch_rating: "Switch to detailed rating",
     error_title: "Something went wrong",
     counter: (i, n) => `Pair ${i} of ${n}`,
     scale_lo: "0 = poor",
@@ -104,15 +115,17 @@ const I18N = {
     consent_title: "סקר איכות וידאו שנוצר בבינה מלאכותית",
     consent_text:
       "זהו סקר מחקר אקדמי אנונימי על איכות וידאו שנוצר בבינה מלאכותית. " +
-      "תצפו בזוגות של סרטונים קצרים ותדרגו כל אחד מהם בשישה היבטים. " +
-      "הסקר אורך כ-8 עד 10 דקות. לא נאסף מידע אישי (רק מזהה סשן אנונימי). " +
-      "ההשתתפות היא בהתנדבות וניתן להפסיק בכל עת. " +
+      "תראו זוגות של סרטונים קצרים ותבחרו את זה שמתאים יותר לתיאור. " +
+      "כל השוואה נמשכת פחות מדקה — אפשר לעשות מעט או הרבה, ולעצור מתי שרוצים. " +
+      "לא נאסף מידע אישי (רק מזהה סשן אנונימי). ההשתתפות היא בהתנדבות. " +
       "בלחיצה על 'התחל' אתם מסכימים להשתתף.",
     setup_note:
       "ℹ️ <strong>תמונת הפתיחה היא צילום אמיתי</strong>. ההנחיה ושני הסרטונים " +
-      "(A ו-B) <strong>נוצרו בבינה מלאכותית</strong> — כך שלעיתים הנחיה עשויה לתאר " +
-      "משהו שאינו אפשרי בהתחשב בתמונה. אם זה קורה, דרגו את מה שאתם באמת רואים וסמנו " +
-      "את התיבה באותו מסך.",
+      "(A ו-B) <strong>נוצרו בבינה מלאכותית</strong>. חלק מההנחיות " +
+      "<strong>מכילות בכוונה פרט קטן שאינו תואם את התמונה</strong> — צבע, כמות או " +
+      "עצם שגויים. זה מכוון וזה חלק ממה שאנחנו בודקים: פשוט בחרו את הסרטון שמתמודד " +
+      "טוב יותר עם התיאור. סמנו את התיבה 'יש בעיה' רק כשזוג באמת אינו שמיש — סרטון " +
+      "שאינו מתנגן, או תוכן לא הולם.",
     start: "התחל",
     requested_action: "הפעולה המבוקשת:",
     hint_line: "תמונת הפתיחה = צילום אמיתי · ההנחיה ושני הסרטונים = תוצרי בינה מלאכותית",
@@ -142,9 +155,13 @@ const I18N = {
     next_hint_choice:
       "כדי להמשיך, בחרו אחת משלוש האפשרויות למעלה — או סמנו את התיבה 'יש בעיה' " +
       "אם לא ניתן לשפוט את הזוג הזה.",
-    done_title: "תודה!",
-    done_text: "הדירוגים שלכם נשמרו. אפשר לסגור את הכרטיסייה הזו, או",
-    again: "לדרג מערך נוסף",
+    done_title: "נשמר — תודה!",
+    done_tally: (n) => n === 1
+      ? "זו השוואה אחת שתרמתם."
+      : `אלו ${n} השוואות שתרמתם.`,
+    done_text: "מעדיפים לדרג סרטונים לעומק במקום?",
+    again: "ממשיכים →",
+    switch_rating: "מעבר לדירוג מפורט",
     error_title: "משהו השתבש",
     counter: (i, n) => `זוג ${i} מתוך ${n}`,
     scale_lo: "0 = גרוע",
@@ -228,8 +245,10 @@ function applyStaticI18n() {
   $("next-hint").textContent = t("next_hint");
 
   $("done-title").textContent = t("done_title");
+  $("done-tally").textContent = L().done_tally(doneCount());
   $("done-text").textContent = t("done_text");
   $("again").textContent = t("again");
+  $("switch-rating").textContent = t("switch_rating");
   $("error-title").textContent = t("error_title");
 
   $("lang-en").classList.toggle("active", lang === "en");
@@ -262,18 +281,47 @@ function markSeen(token) {
   try { localStorage.setItem(SEEN_KEY, JSON.stringify([...set])); } catch {}
 }
 
-async function loadSession() {
+// Comparisons are the default and the continuation. A rating set is something a
+// rater opts into from the done screen, never something they are handed.
+let BLOCK = "choice";
+
+async function loadSession(block, skipConsent) {
   try {
+    BLOCK = block || BLOCK;
     const seen = getSeen();
-    const q = seen.length ? "?seen=" + encodeURIComponent(seen.join(",")) : "";
-    const r = await fetch("/api/session" + q);
+    const p = new URLSearchParams();
+    if (seen.length) p.set("seen", seen.join(","));
+    if (BLOCK) p.set("block", BLOCK);
+    const qs = p.toString();
+    const r = await fetch("/api/session" + (qs ? "?" + qs : ""));
     if (!r.ok) throw new Error("session " + r.status);
     SESSION = await r.json();
     if (!SESSION.items.length) return fail(t("err_no_videos"));
-    show("consent");
+    idx = 0;
+    answers = {};
+    if (skipConsent) {
+      // A continuation: they already consented and are mid-flow. Dropping them
+      // back on the consent screen is the reload we are removing.
+      hide("done");
+      show("rating");
+      renderItem();
+    } else {
+      show("consent");
+    }
   } catch (e) {
     fail(t("err_load") + e.message);
   }
+}
+
+// Lifetime count across rounds, so a returning rater sees their own total
+// rather than starting from zero every set.
+const DONE_KEY = "survey_done_count";
+function doneCount() {
+  const n = parseInt(localStorage.getItem(DONE_KEY) || "0", 10);
+  return isNaN(n) ? 0 : n;
+}
+function bumpDone() {
+  try { localStorage.setItem(DONE_KEY, String(doneCount() + 1)); } catch {}
 }
 
 function buildSliders(container, side) {
@@ -531,6 +579,7 @@ async function submit() {
 
   sendRating(it, ans, Date.now() - shownAt);
   markSeen(it.token);   // remember across rounds so its clips aren't shown again
+  bumpDone();
   idx += 1;
 
   if (idx >= SESSION.items.length) {
@@ -540,6 +589,9 @@ async function submit() {
     setBusy(false);
     $("progress-bar").style.width = "100%";
     hide("rating");
+    // Refresh the tally here, not only in applyStaticI18n: it is rendered once at
+    // page load and would otherwise show the count from before this set.
+    $("done-tally").textContent = L().done_tally(doneCount());
     show("done");
     if (saveFailures > 0) fail(t("err_save") + saveFailures);
   } else {
@@ -558,13 +610,28 @@ $("lang-en").addEventListener("click", () => setLang("en"));
 $("lang-he").addEventListener("click", () => setLang("he"));
 $("flag-issue").addEventListener("change", () => { toggleNote(); updateNav(); });
 $("start-btn").addEventListener("click", () => {
+  // Best-effort and deliberately not awaited: the funnel measurement must never
+  // put a network round trip between pressing Start and seeing the first video.
+  if (SESSION && SESSION.session_id) {
+    fetch("/api/session/" + encodeURIComponent(SESSION.session_id) + "/consent",
+          {method: "POST", keepalive: true}).catch(() => {});
+  }
   hide("consent");
   show("rating");
   renderItem();
 });
 $("next-btn").addEventListener("click", submit);
 $("back-btn").addEventListener("click", goBack);
-$("again").addEventListener("click", (e) => { e.preventDefault(); location.reload(); });
+$("again").addEventListener("click", (e) => {
+  e.preventDefault();
+  // Was location.reload(): a full round trip that re-ran consent and threw away
+  // every buffered video. Fetch the next set in place instead.
+  loadSession("choice", true);
+});
+$("switch-rating").addEventListener("click", (e) => {
+  e.preventDefault();
+  loadSession("rating", true);
+});
 
 applyStaticI18n();
 loadSession();

@@ -139,3 +139,20 @@ a { color: var(--accent); }
   .stage { grid-template-columns: 1fr; }
   .videos { grid-template-columns: 1fr; }
 }
+
+/* Done screen: continuing is the primary action, stopping is the quiet one.
+   .secondary already exists for buttons, so these are scoped to the done card
+   to avoid colliding with it. */
+#done a.cta {
+  display: inline-block;
+  padding: 12px 22px;
+  border-radius: 8px;
+  background: var(--accent, #2a78d6);
+  color: #fff;
+  font-weight: 600;
+  text-decoration: none;
+}
+#done a.cta:hover { filter: brightness(1.08); }
+#done a.cta:focus-visible { outline: 3px solid currentColor; outline-offset: 2px; }
+#done p.secondary { font-size: 13.5px; color: var(--muted, #777); margin-top: 18px; }
+#done #done-tally { font-size: 15px; margin-top: 4px; }

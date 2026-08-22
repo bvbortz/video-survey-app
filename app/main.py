@@ -95,11 +95,16 @@ async def health():
 
 
 @app.get("/api/session")
-async def create_session(seen: str = ""):
+async def create_session(seen: str = "", block: str = ""):
     db = dbmod.get_db()
     # `seen` = comma-separated opaque pair tokens this browser has already rated
     seen_tokens = {s for s in seen.split(",") if s}
-    items = await build_session_items(db, seen_tokens=seen_tokens)
+    # block="choice" is the endless continuation: comparisons only, no rating
+    # block. Unrecognised values fall back to the default mixed session rather
+    # than erroring, so an old cached client can never be locked out.
+    items = await build_session_items(
+        db, seen_tokens=seen_tokens,
+        block=block if block in ("choice", "rating") else None)
     if not items:
         raise HTTPException(503, "no pairs loaded")
 
@@ -110,7 +115,7 @@ async def create_session(seen: str = ""):
     # mid-session cannot invalidate answers already given under the old one.
     assignments = [
         {"index": i, "pair_id": it["pair_id"], "kind": it["kind"], "order": it["order"],
-         "mode": it["pair"].get("mode", DEFAULT_MODE)}
+         "mode": it["pair"].get("mode", DEFAULT_MODE), "subgroup": it.get("subgroup")}
         for i, it in enumerate(items)
     ]
     await db.sessions.insert_one({
@@ -118,6 +123,7 @@ async def create_session(seen: str = ""):
         "created_at": _now(),
         "assignments": assignments,
         "n_items": len(items),
+        "block": block or "default",
     })
 
     # what the client sees — leg identity hidden, just URLs for slot A / slot B
@@ -226,6 +232,22 @@ async def _persist_response(db, doc: dict) -> None:
                          doc.get("session_id"), doc.get("index"), doc.get("pair_id"))
 
 
+@app.post("/api/session/{session_id}/consent")
+async def session_consent(session_id: str):
+    """Mark the moment the rater pressed Start.
+
+    /api/session is called on page load, before consent, so `sessions` counts
+    page views and every funnel number computed from it conflates "never
+    engaged" with "started and gave up". Those two call for opposite fixes —
+    one is the landing page, the other is the task — and until now they were the
+    same number. Best-effort: never block the rater on it.
+    """
+    db = dbmod.get_db()
+    await db.sessions.update_one({"session_id": session_id},
+                                 {"$set": {"consented_at": _now()}})
+    return {"ok": True}
+
+
 @app.post("/api/response")
 async def submit_response(body: ResponseIn, background: BackgroundTasks):
     db = dbmod.get_db()
@@ -257,6 +279,10 @@ async def submit_response(body: ResponseIn, background: BackgroundTasks):
         "pair_id": assignment["pair_id"],
         "kind": assignment["kind"],
         "mode": mode,
+        # Which pre-registered stratum this verdict came from. Copied off the
+        # assignment rather than re-read from the pair, so retuning the quota or
+        # editing a pair document later cannot rewrite history.
+        "subgroup": assignment.get("subgroup"),
         "created_at": _now(),
         "elapsed_ms": body.elapsed_ms,
         "flag_issue": body.flag_issue,

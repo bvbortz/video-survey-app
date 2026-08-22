@@ -77,7 +77,13 @@
     <!-- Done -->
     <section id="done" class="card hidden">
       <h1 id="done-title"></h1>
-      <p><span id="done-text"></span> <a href="#" id="again"></a></p>
+      <p id="done-tally"></p>
+      <!-- Continuing is the primary action and reads as a button; stopping is a
+           quiet link. The previous screen led with "you may close this tab",
+           which is an instruction to leave. -->
+      <p><a href="#" id="again" class="cta"></a></p>
+      <p class="secondary"><span id="done-text"></span>
+        <a href="#" id="switch-rating"></a></p>
     </section>
 
     <section id="error" class="card hidden">

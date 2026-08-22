@@ -42,6 +42,30 @@ N_CHOICE = 5
 N_CHOICE_SATED = 2
 CHOICE_TARGET = 542
 
+# --- pre-registered subgroups -------------------------------------------------
+# The open claim is that the finetune's advantage over base concentrates on
+# prompts that are oblique (`origin == "indirect"`) or that carry one deliberately
+# wrong detail (`misleading == True`). They are DISJOINT populations from
+# different generators — 97 and 61 prompts of 569 — and are reported separately,
+# so each needs ~49 decisive verdicts (Holm, two subgroups).
+#
+# Left to itself the round-robin would sample them in proportion to the pool and
+# spend ~72% of every session on prompts that answer neither question. So the
+# choice block runs a QUOTA instead. This is an OVERSAMPLE, not a filter: `other`
+# keeps a slot, every response records which stratum it came from, and the pooled
+# estimate is recovered by weighting strata back to their pool shares. An analysis
+# that ignores `subgroup` and averages raw responses will be biased — that is the
+# price of the quota and the reason the field is stored.
+def subgroup_of(pair: dict) -> str:
+    if pair.get("origin") == "indirect":
+        return "indirect"
+    if pair.get("misleading"):
+        return "misleading"
+    return "other"
+
+
+SUBGROUP_QUOTA = {"indirect": 2, "misleading": 2, "other": 1}   # sums to N_CHOICE
+
 # Retired pairs stay in the collection so old responses can still be joined back to
 # their arm/generator (the admin stats do exactly that), but they are never handed
 # out again. Absent field == active, so pairs loaded before this existed still serve.
@@ -115,11 +139,54 @@ def _select(reals: list[dict], n: int, seen_clips: set,
     return chosen
 
 
+def _select_quota(pool: list[dict], n: int, seen_clips: set,
+                  used_clips: set) -> list[dict]:
+    """Fill n choice slots by subgroup quota, least-judged first within each.
+
+    Quota shortfalls cascade: `misleading` is the smallest pool (61 prompts) and
+    a rater who has already seen most of it cannot be served two more, so the
+    slots it cannot fill go to the other strata rather than shortening the
+    session. Under-filling would quietly punish exactly the raters who have given
+    the most.
+    """
+    chosen: list[dict] = []
+    by_group: dict[str, list[dict]] = {}
+    for p in pool:
+        by_group.setdefault(subgroup_of(p), []).append(p)
+
+    # Largest quota first, so the scarce strata get their pick before `other`
+    # consumes clips they might have shared with a pair.
+    order = sorted(SUBGROUP_QUOTA, key=lambda g: -SUBGROUP_QUOTA[g])
+    for group in order:
+        want = round(n * SUBGROUP_QUOTA[group] / max(1, sum(SUBGROUP_QUOTA.values())))
+        if want <= 0:
+            continue
+        _select_into(by_group.get(group, []), want, seen_clips, used_clips, chosen)
+
+    # Cascade: whatever the quota could not fill, take from anything left.
+    if len(chosen) < n:
+        taken = {p["pair_id"] for p in chosen}
+        _select_into([p for p in pool if p["pair_id"] not in taken],
+                     n - len(chosen), seen_clips, used_clips, chosen)
+    return chosen[:n]
+
+
+def _select_into(pool: list[dict], n: int, seen_clips: set, used_clips: set,
+                 chosen: list[dict]) -> None:
+    """_select() semantics, appending into an existing `chosen` list."""
+    picked = _select(pool, n, seen_clips, used_clips)
+    chosen.extend(picked)
+
+
 def _make_item(pair: dict, kind: str) -> dict:
     """Attach a randomised A/B leg order to a pair."""
     order = [leg["leg"] for leg in pair["legs"]]
     random.shuffle(order)
-    return {"pair_id": pair["pair_id"], "kind": kind, "order": order, "pair": pair}
+    return {"pair_id": pair["pair_id"], "kind": kind, "order": order, "pair": pair,
+            # Stored on the assignment and copied onto the response, so the
+            # stratum a verdict came from survives even if the pair document is
+            # later edited or the quota is retuned mid-collection.
+            "subgroup": subgroup_of(pair)}
 
 
 async def _choice_block_size(db) -> int:
@@ -138,7 +205,20 @@ async def _choice_block_size(db) -> int:
 async def build_session_items(
     db, seen_tokens: set | None = None,
     n_real: int = N_ITEMS_REAL, n_attention: int = N_ATTENTION,
+    block: str | None = None,
 ) -> list[dict]:
+    """Build one session's items.
+
+    `block` selects the shape:
+      None      — the default session: forced-choice block, then rating block.
+      "choice"  — forced choice only. This is the endless continuation a rater
+                  gets after finishing a set, and the default the app now opens
+                  with: a comparison costs ~36s against ~70s for a rating pair,
+                  and the AB arm is the one starved of data (75 responses against
+                  437 ratings), so the marginal minute of a volunteer's attention
+                  is worth roughly twice as much spent here.
+      "rating"  — rating only, for the rater who opts into it explicitly.
+    """
     seen_tokens = set(seen_tokens or ())
     counts = await _judged_counts(db)
 
@@ -158,13 +238,25 @@ async def build_session_items(
     choice_pool = [p for p in reals if p.get("mode") == "2afc"]
     rating_pool = [p for p in reals if p.get("mode") != "2afc"]
 
-    n_choice = min(await _choice_block_size(db), n_real) if choice_pool else 0
+    if block == "choice":
+        n_choice, n_rating = n_real, 0
+    elif block == "rating":
+        n_choice, n_rating = 0, n_real
+    else:
+        n_choice = min(await _choice_block_size(db), n_real) if choice_pool else 0
+        n_rating = n_real - n_choice
+
     used_clips: set = set()
-    chosen_choice = _select(choice_pool, n_choice, seen_clips, used_clips)
+    chosen_choice = _select_quota(choice_pool, n_choice, seen_clips, used_clips) \
+        if n_choice else []
     # Whatever the choice block could not fill goes to ratings, so the session is
-    # still full when one pool runs out for this particular rater.
-    chosen_rating = _select(rating_pool, n_real - len(chosen_choice),
-                            seen_clips, used_clips)
+    # still full when one pool runs out for this particular rater. Not in
+    # block="choice": there the rater asked for comparisons, and quietly handing
+    # them a ten-slider rating form instead is how you lose them for good.
+    if block != "choice":
+        n_rating = n_real - len(chosen_choice)
+    chosen_rating = _select(rating_pool, n_rating, seen_clips, used_clips) \
+        if n_rating else []
 
     attn = [p async for p in db.pairs.find({"is_attention_check": True, **ACTIVE})]
     random.shuffle(attn)
