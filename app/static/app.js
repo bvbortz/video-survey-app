@@ -68,8 +68,10 @@ const I18N = {
     choice_tie: "About the same",
     // Both parts are real data; the wording deliberately avoids calling part 1 a
     // warm-up, because those answers are the ones the study most depends on.
-    section_choice: (i, n) => `Part 1 of 2 — quick comparisons (${i} of ${n})`,
-    section_rating: (i, n) => `Part 2 of 2 — detailed ratings (${i} of ${n})`,
+    // No "Part 1 of 2": a session is one block of one kind now, and promising a
+    // part 2 that never comes reads as a longer commitment than it is.
+    section_choice: (i, n) => `Quick comparisons (${i} of ${n})`,
+    section_rating: (i, n) => `Detailed ratings (${i} of ${n})`,
     // Optional on purpose. Which defects a person actually notices is the thing a
     // score cannot tell us, but requiring prose here would cost far more answers
     // than the prose is worth.
@@ -164,8 +166,8 @@ const I18N = {
     choice_a: "וידאו A טוב יותר באופן ברור",
     choice_b: "וידאו B טוב יותר באופן ברור",
     choice_tie: "בערך אותו דבר",
-    section_choice: (i, n) => `חלק 1 מתוך 2 — השוואות מהירות (${i} מתוך ${n})`,
-    section_rating: (i, n) => `חלק 2 מתוך 2 — דירוגים מפורטים (${i} מתוך ${n})`,
+    section_choice: (i, n) => `השוואות מהירות (${i} מתוך ${n})`,
+    section_rating: (i, n) => `דירוגים מפורטים (${i} מתוך ${n})`,
     choice_note_label: "רשות — משהו לא תקין באחד הסרטונים? (גם כמה מילים יעזרו)",
     choice_note_ph: "למשל הרגליים מתמזגות, האובייקט נעלם באמצע, המצלמה קופצת",
     next_hint_choice:

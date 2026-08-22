@@ -123,7 +123,10 @@ def test_block_boundary_switches_the_ui(tmp_path):
     }""", tmp_path)
     assert out["errors"] == [] and "thrown" not in out
     assert out["posts"] == 5
-    assert "Part 2" in out["section"] and "(1 of 4)" in out["section"]
+    # The label is the visible signal that the block changed; it no longer says
+    # "Part 2 of 2" because a session is one block of one kind now. What must hold
+    # is that it names the rating block and the counter restarts at 1.
+    assert "Detailed ratings" in out["section"] and "(1 of 4)" in out["section"]
     assert out["choiceHidden"] is True and out["slidersShown"] is True
     assert out["sliderCount"] == 2 * len(RUBRIC)
 
