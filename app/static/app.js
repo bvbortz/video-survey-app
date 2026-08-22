@@ -69,6 +69,8 @@ const I18N = {
       "To continue, pick one of the three options above — or tick the “there’s a " +
       "problem” box if this pair can’t be judged.",
     done_title: "Saved — thank you!",
+    exhausted_title: "That is all of them — thank you!",
+    exhausted_text: "You have compared every pair we have. If you would like to keep helping,",
     done_tally: (n) => n === 1
       ? "That is 1 comparison you have contributed."
       : `That is ${n} comparisons you have contributed.`,
@@ -156,6 +158,8 @@ const I18N = {
       "כדי להמשיך, בחרו אחת משלוש האפשרויות למעלה — או סמנו את התיבה 'יש בעיה' " +
       "אם לא ניתן לשפוט את הזוג הזה.",
     done_title: "נשמר — תודה!",
+    exhausted_title: "זה הכול — תודה!",
+    exhausted_text: "השוויתם כל זוג שיש לנו. אם תרצו להמשיך לעזור,",
     done_tally: (n) => n === 1
       ? "זו השוואה אחת שתרמתם."
       : `אלו ${n} השוואות שתרמתם.`,
@@ -296,6 +300,16 @@ async function loadSession(block, skipConsent) {
     const r = await fetch("/api/session" + (qs ? "?" + qs : ""));
     if (!r.ok) throw new Error("session " + r.status);
     SESSION = await r.json();
+    if (SESSION.exhausted) {
+      // Not an error: this rater has genuinely seen every pair. Strict dedup
+      // means we would rather end than show one twice.
+      hide("rating");
+      $("done-title").textContent = t("exhausted_title");
+      $("done-tally").textContent = L().done_tally(doneCount());
+      $("done-text").textContent = t("exhausted_text");
+      $("again").style.display = "none";
+      return show("done");
+    }
     if (!SESSION.items.length) return fail(t("err_no_videos"));
     idx = 0;
     answers = {};
@@ -592,6 +606,7 @@ async function submit() {
     // Refresh the tally here, not only in applyStaticI18n: it is rendered once at
     // page load and would otherwise show the count from before this set.
     $("done-tally").textContent = L().done_tally(doneCount());
+    $("again").style.display = "";      // may have been hidden by an exhausted set
     show("done");
     if (saveFailures > 0) fail(t("err_save") + saveFailures);
   } else {

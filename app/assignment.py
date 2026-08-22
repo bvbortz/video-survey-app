@@ -51,10 +51,19 @@ CHOICE_TARGET = 542
 #
 # Left to itself the round-robin would sample them in proportion to the pool and
 # spend ~72% of every session on prompts that answer neither question. So the
-# choice block runs a QUOTA instead. This is an OVERSAMPLE, not a filter: `other`
-# keeps a slot, every response records which stratum it came from, and the pooled
-# estimate is recovered by weighting strata back to their pool shares. An analysis
-# that ignores `subgroup` and averages raw responses will be biased — that is the
+# choice block runs a QUOTA instead: equal thirds.
+#
+# Equal rather than subgroup-heavy because the claim is a COMPARISON — the
+# advantage is supposed to be larger on these prompts than on ordinary ones. That
+# contrast needs `other` from the same rater population at comparable precision;
+# borrowing the existing 562 in-house verdicts would mix rater populations. A
+# subgroup-heavy split reaches "indirect beats 50%" sooner but leaves "indirect
+# beats other" underpowered longest, and the second is the actual claim.
+#
+# This is an OVERSAMPLE, not a filter: all 569 prompts stay reachable, every
+# response records which stratum it came from, and the pooled estimate is
+# recovered by weighting strata back to their pool shares. An analysis that
+# ignores `subgroup` and averages raw responses will be biased — that is the
 # price of the quota and the reason the field is stored.
 def subgroup_of(pair: dict) -> str:
     if pair.get("origin") == "indirect":
@@ -64,7 +73,7 @@ def subgroup_of(pair: dict) -> str:
     return "other"
 
 
-SUBGROUP_QUOTA = {"indirect": 2, "misleading": 2, "other": 1}   # sums to N_CHOICE
+SUBGROUP_QUOTA = {"indirect": 1, "misleading": 1, "other": 1}   # balanced three ways
 
 # Retired pairs stay in the collection so old responses can still be joined back to
 # their arm/generator (the admin stats do exactly that), but they are never handed
@@ -114,10 +123,15 @@ def _round_robin(pool: list[dict], n: int, chosen: list[dict], used_clips: set) 
 
 
 def _select(reals: list[dict], n: int, seen_clips: set,
-            used_clips: set | None = None) -> list[dict]:
-    """Pick n pairs. First pass excludes clips the rater has already seen; if that
-    can't fill the session (a rater who's done many rounds), a second pass relaxes
-    the cross-round exclusion but still never repeats a clip within this session.
+            used_clips: set | None = None, strict: bool = False) -> list[dict]:
+    """Pick n pairs, excluding clips the rater has already seen.
+
+    With `strict` (what the choice block uses) that exclusion is absolute: a
+    stratum that cannot fill its slots from unseen pairs yields them rather than
+    repeating, the caller cascades the shortfall to the other strata, and an
+    exhausted pool returns a short session. Without it, a second pass relaxes the
+    cross-round exclusion to keep a session full — the original behaviour, still
+    used by the rating block.
 
     `used_clips`, when given, is shared across the two blocks and mutated, so a clip
     taken by the forced-choice block cannot reappear in the rating block. That matters
@@ -128,7 +142,13 @@ def _select(reals: list[dict], n: int, seen_clips: set,
     chosen: list[dict] = []
     blocked = set(seen_clips) | set(used_clips or ())
     _round_robin(reals, n, chosen, blocked)
-    if len(chosen) < n:
+    # strict: a rater must never be shown a clip twice, so a stratum that cannot
+    # fill its slots from unseen pairs simply yields them. _select_quota then
+    # cascades the shortfall to the other strata, and if the whole pool is
+    # exhausted for this rater the session comes back short rather than
+    # repeating. Re-showing a pair would silently correlate two "independent"
+    # verdicts from the same person on the same clips.
+    if len(chosen) < n and not strict:
         within = set(used_clips or ())
         within |= set().union(*(_clips(p) for p in chosen)) if chosen else set()
         _round_robin(reals, n, chosen, within)
@@ -137,6 +157,32 @@ def _select(reals: list[dict], n: int, seen_clips: set,
         for p in chosen:
             used_clips |= _clips(p)
     return chosen
+
+
+def _allocate(n: int) -> dict[str, int]:
+    """Split n slots across the strata in SUBGROUP_QUOTA's ratio, exactly.
+
+    Largest-remainder, not per-stratum rounding. Rounding each share
+    independently does not sum to n, and the error does not land evenly: with
+    n=9 and a 2/2/1 quota, round() asks for 4+4+2=10 slots, the two big strata
+    are served first, and `other` silently collapses from the declared 20% to
+    11%. `other` is the comparison group the subgroup claim is measured
+    against, so starving it quietly weakens the very contrast being collected.
+
+    Returns strata in descending quota order: the scarce, heavily-oversampled
+    strata pick before `other` consumes a clip they might have shared.
+    """
+    total = max(1, sum(SUBGROUP_QUOTA.values()))
+    exact = {g: n * q / total for g, q in SUBGROUP_QUOTA.items()}
+    out = {g: int(v) for g, v in exact.items()}
+    # Hand out the leftover slots to the largest fractional parts.
+    left = n - sum(out.values())
+    for g in sorted(exact, key=lambda k: (-(exact[k] - out[k]), -SUBGROUP_QUOTA[k])):
+        if left <= 0:
+            break
+        out[g] += 1
+        left -= 1
+    return {g: out[g] for g in sorted(out, key=lambda k: -SUBGROUP_QUOTA[k])}
 
 
 def _select_quota(pool: list[dict], n: int, seen_clips: set,
@@ -154,11 +200,7 @@ def _select_quota(pool: list[dict], n: int, seen_clips: set,
     for p in pool:
         by_group.setdefault(subgroup_of(p), []).append(p)
 
-    # Largest quota first, so the scarce strata get their pick before `other`
-    # consumes clips they might have shared with a pair.
-    order = sorted(SUBGROUP_QUOTA, key=lambda g: -SUBGROUP_QUOTA[g])
-    for group in order:
-        want = round(n * SUBGROUP_QUOTA[group] / max(1, sum(SUBGROUP_QUOTA.values())))
+    for group, want in _allocate(n).items():
         if want <= 0:
             continue
         _select_into(by_group.get(group, []), want, seen_clips, used_clips, chosen)
@@ -174,8 +216,7 @@ def _select_quota(pool: list[dict], n: int, seen_clips: set,
 def _select_into(pool: list[dict], n: int, seen_clips: set, used_clips: set,
                  chosen: list[dict]) -> None:
     """_select() semantics, appending into an existing `chosen` list."""
-    picked = _select(pool, n, seen_clips, used_clips)
-    chosen.extend(picked)
+    chosen.extend(_select(pool, n, seen_clips, used_clips, strict=True))
 
 
 def _make_item(pair: dict, kind: str) -> dict:

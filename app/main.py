@@ -106,6 +106,13 @@ async def create_session(seen: str = "", block: str = ""):
         db, seen_tokens=seen_tokens,
         block=block if block in ("choice", "rating") else None)
     if not items:
+        # Two very different situations that used to look identical. With strict
+        # cross-round dedup a dedicated rater can legitimately exhaust the pool,
+        # and telling them the service is broken is both wrong and the worst
+        # possible thanks. 503 stays for a genuinely empty database.
+        if await db.pairs.count_documents(ACTIVE, limit=1):
+            return {"session_id": None, "items": [], "exhausted": True,
+                    "rubric": RUBRIC, "choice_question": CHOICE_QUESTION}
         raise HTTPException(503, "no pairs loaded")
 
     session_id = str(uuid.uuid4())

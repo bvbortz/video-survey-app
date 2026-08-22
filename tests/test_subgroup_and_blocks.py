@@ -88,11 +88,11 @@ def test_quota_oversamples_the_pre_registered_subgroups():
     total = sum(counts.values())
     assert total > 0
     share = {k: v / total for k, v in counts.items()}
-    # Pool share of each subgroup is 12/64 = 19%; the quota asks for 40% each.
-    # Assert clearly above the pool share, well below the exact quota, so the
-    # test survives cascade effects without becoming vacuous.
-    assert share["indirect"] > 0.28, share
-    assert share["misleading"] > 0.28, share
+    # Pool share of each subgroup is 12/64 = 19%; the quota asks for 33% each.
+    # Assert clearly above the pool share, below the exact quota, so the test
+    # survives cascade effects without becoming vacuous.
+    assert share["indirect"] > 0.26, share
+    assert share["misleading"] > 0.26, share
     # `other` must not be starved to zero — the pooled estimate still needs it.
     assert counts["other"] > 0, share
 
@@ -153,3 +153,86 @@ def test_unknown_block_falls_back_to_a_normal_session(monkeypatch):
     with TestClient(main.app) as c:
         s = c.get("/api/session?block=nonsense").json()
         assert s["items"], "a bad block value locked the rater out"
+
+
+def test_allocation_sums_exactly_and_never_starves_other():
+    """Per-stratum round() asked for 10 slots out of 9 and `other` absorbed the
+    error, collapsing the declared 20% to 11%. `other` is the comparison group,
+    so that quietly weakened the contrast the quota exists to sharpen."""
+    from app.assignment import _allocate, SUBGROUP_QUOTA
+    for n in range(3, 21):
+        a = _allocate(n)
+        assert sum(a.values()) == n, (n, a)
+        assert all(v >= 0 for v in a.values()), (n, a)
+        # every stratum with a quota keeps a slot once the block is big enough
+        # to hold one each
+        if n >= len(SUBGROUP_QUOTA):
+            assert all(v >= 1 for v in a.values()), (n, a)
+    assert _allocate(9) == {"indirect": 3, "misleading": 3, "other": 3}
+
+
+def test_served_mix_matches_the_declared_quota_at_the_real_block_size():
+    db = _mkdb()
+    loop = asyncio.get_event_loop()
+    counts = {"indirect": 0, "misleading": 0, "other": 0}
+    for _ in range(40):
+        for it in loop.run_until_complete(build_session_items(db, block="choice")):
+            counts[it["subgroup"]] += 1
+    total = sum(counts.values())
+    other = counts["other"] / total
+    # declared 33%; allow slack for cascade, but the old 11% collapse must fail
+    assert 0.26 < other < 0.42, counts
+
+
+def test_strict_dedup_never_repeats_a_clip_across_rounds():
+    """A rater who keeps going must never be shown the same clip twice; the
+    session comes back short instead. The old relax-on-second-pass behaviour
+    would have quietly correlated two 'independent' verdicts from one person."""
+    from app.assignment import pair_token
+    db = _mkdb()
+    loop = asyncio.get_event_loop()
+    seen_tokens, seen_clips = set(), set()
+    rounds = 0
+    while rounds < 30:
+        items = loop.run_until_complete(
+            build_session_items(db, seen_tokens=seen_tokens, block="choice"))
+        if not items:
+            break
+        for it in items:
+            clips = {leg["clip_id"] for leg in it["pair"]["legs"]}
+            assert not (clips & seen_clips), \
+                f"clip repeated for this rater: {clips & seen_clips}"
+            seen_clips |= clips
+            seen_tokens.add(pair_token(it["pair"]["pair_id"]))
+        rounds += 1
+    assert rounds > 1, "pool should support several rounds"
+
+
+def test_exhausted_rater_gets_a_thank_you_not_a_503(monkeypatch):
+    from starlette.testclient import TestClient
+    from app.assignment import pair_token
+
+    db = _mkdb()
+    dbmod.set_db(db)
+    monkeypatch.setattr(main, "VIDEO_BASE_URL", "https://cdn.example/videos")
+    loop = asyncio.get_event_loop()
+    all_tokens = [pair_token(p["pair_id"])
+                  for p in loop.run_until_complete(
+                      db.pairs.find({}, {"pair_id": 1}).to_list(length=None))]
+    with TestClient(main.app) as c:
+        r = c.get("/api/session?block=choice&seen=" + ",".join(all_tokens))
+        assert r.status_code == 200, r.status_code
+        body = r.json()
+        assert body.get("exhausted") is True, body
+        assert body["items"] == []
+
+
+def test_empty_database_still_503s(monkeypatch):
+    """Exhaustion must not mask a genuinely broken deployment."""
+    from starlette.testclient import TestClient
+
+    db = AsyncMongoMockClient()["survey"]
+    dbmod.set_db(db)
+    monkeypatch.setattr(main, "VIDEO_BASE_URL", "https://cdn.example/videos")
+    with TestClient(main.app) as c:
+        assert c.get("/api/session").status_code == 503
