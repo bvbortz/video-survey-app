@@ -236,3 +236,49 @@ def test_empty_database_still_503s(monkeypatch):
     monkeypatch.setattr(main, "VIDEO_BASE_URL", "https://cdn.example/videos")
     with TestClient(main.app) as c:
         assert c.get("/api/session").status_code == 503
+
+
+# --- the flag-label regression -------------------------------------------------
+# A rater's checkbox label read "the prompt is impossible or doesn't match the
+# starting image". For a round that deliberately ships mismatched prompts that is
+# an instruction to flag the entire subgroup, and raters followed it -- the intro
+# note said the opposite, but the label sits next to the task and the note does
+# not. These guard the wording, in both languages, because the strings live in
+# app.js where no other test looks.
+import re
+from pathlib import Path
+
+APP_JS = Path(__file__).resolve().parent.parent / "app" / "static" / "app.js"
+
+
+def _block(lang: str) -> str:
+    """The I18N body for one language, so en/he assertions cannot cross over."""
+    src = APP_JS.read_text(encoding="utf-8")
+    start = src.index(f"\n  {lang}: {{")
+    nxt = src.find("\n  he: {", start + 1) if lang == "en" else len(src)
+    return src[start:nxt if nxt > 0 else len(src)]
+
+
+def test_flag_label_does_not_tell_raters_to_flag_mismatched_prompts():
+    en, he = _block("en"), _block("he")
+    label_en = re.search(r"flag_label:\s*((?:\s*\"[^\"]*\"\s*\+?)+)", en).group(1)
+    label_he = re.search(r"flag_label:\s*((?:\s*\"[^\"]*\"\s*\+?)+)", he).group(1)
+    assert "match the starting image" not in label_en, label_en
+    assert "doesn’t match" not in label_en and "does not match" not in label_en, label_en
+    assert "תואמת את תמונת הפתיחה" not in label_he, label_he
+    # and it must still say what a real problem is, or nobody reports broken video
+    assert "won’t play" in label_en or "blank" in label_en, label_en
+
+
+def test_deliberate_mismatch_is_stated_on_every_item_not_just_at_setup():
+    for lang, needle in (("en", "on purpose"), ("he", "בכוונה")):
+        hint = re.search(r"hint_line:\s*((?:\s*\"[^\"]*\"\s*\+?)+)", _block(lang)).group(1)
+        assert needle in hint, f"{lang} hint_line must carry the reminder: {hint}"
+
+
+def test_ticking_the_flag_box_shows_a_reminder_in_both_languages():
+    for lang in ("en", "he"):
+        assert "flag_reminder:" in _block(lang), f"{lang} is missing flag_reminder"
+    src = APP_JS.read_text(encoding="utf-8")
+    assert 'toggle("hidden", !on)' in src and "flag-reminder" in src, \
+        "flag-reminder must be shown/hidden with the checkbox"

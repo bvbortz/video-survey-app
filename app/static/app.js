@@ -32,16 +32,26 @@ const I18N = {
       "will not play, or the content is inappropriate.",
     start: "Start",
     requested_action: "Requested action:",
-    hint_line: "Starting image = real photo · prompt & both videos = AI-generated",
+    // Shown on every item. The setup note is read once and forgotten, and raters
+    // were flagging the deliberately-mismatched prompts as broken — so the
+    // reminder has to live next to the task, not only on the consent screen.
+    hint_line:
+      "Starting image = real photo · prompt & both videos = AI-generated · " +
+      "some prompts don’t quite match the image on purpose — just pick the better video",
     starting_image: "Starting image",
     video_a: "Video A",
     video_b: "Video B",
+    // Must NOT mention the prompt not matching the image: that is the designed
+    // condition, and naming it here told raters to flag the entire subgroup.
     flag_label:
-      "There’s a problem with this pair — e.g. the prompt is impossible or doesn’t " +
-      "match the starting image, contains NSFW/inappropriate content, or anything else",
+      "This pair is unusable — a video won’t play or is blank, or the content is " +
+      "inappropriate",
+    flag_reminder:
+      "A prompt that doesn’t quite match the image is <strong>intentional</strong> — " +
+      "please don’t flag it for that. Untick this and just pick the video that " +
+      "handles the description better.",
     flag_note_ph:
-      "Please describe what’s wrong (e.g. the action can’t happen given this image, " +
-      "NSFW content, …)",
+      "What’s wrong? (e.g. video B never loads, black frames, inappropriate content …)",
     back: "Back",
     next: "Next",
     finish: "Finish",
@@ -130,15 +140,19 @@ const I18N = {
       "שאינו מתנגן, או תוכן לא הולם.",
     start: "התחל",
     requested_action: "הפעולה המבוקשת:",
-    hint_line: "תמונת הפתיחה = צילום אמיתי · ההנחיה ושני הסרטונים = תוצרי בינה מלאכותית",
+    hint_line:
+      "תמונת הפתיחה = צילום אמיתי · ההנחיה ושני הסרטונים = תוצרי בינה מלאכותית · " +
+      "חלק מההנחיות אינן תואמות במדויק את התמונה בכוונה — פשוט בחרו את הסרטון הטוב יותר",
     starting_image: "תמונת הפתיחה",
     video_a: "וידאו A",
     video_b: "וידאו B",
     flag_label:
-      "יש בעיה עם הזוג הזה — למשל ההנחיה בלתי אפשרית או אינה תואמת את תמונת הפתיחה, " +
-      "מכילה תוכן פוגעני/לא הולם, או כל דבר אחר",
+      "לא ניתן להשתמש בזוג הזה — סרטון שאינו מתנגן או ריק, או תוכן לא הולם",
+    flag_reminder:
+      "הנחיה שאינה תואמת במדויק את התמונה היא <strong>מכוונת</strong> — נא לא לסמן " +
+      "בעיה בגלל זה. בטלו את הסימון ופשוט בחרו את הסרטון שמתמודד טוב יותר עם התיאור.",
     flag_note_ph:
-      "אנא תארו מה הבעיה (למשל הפעולה אינה אפשרית בהתחשב בתמונה, תוכן לא הולם, …)",
+      "מה הבעיה? (למשל וידאו B לא נטען, פריימים שחורים, תוכן לא הולם …)",
     back: "חזור",
     next: "הבא",
     finish: "סיום",
@@ -243,6 +257,7 @@ function applyStaticI18n() {
   $("label-video-a").textContent = t("video_a");
   $("label-video-b").textContent = t("video_b");
   $("flag-label-text").textContent = t("flag_label");
+  $("flag-reminder").innerHTML = t("flag_reminder");
   $("flag-note").placeholder = t("flag_note_ph");
   $("back-btn").textContent = t("back");
   $("saving-text").textContent = t("saving");
@@ -423,7 +438,12 @@ function onSlider(e) {
 }
 
 function toggleNote() {
-  $("flag-note").classList.toggle("hidden", !$("flag-issue").checked);
+  const on = $("flag-issue").checked;
+  $("flag-note").classList.toggle("hidden", !on);
+  // Surfaced only when the box is ticked: this is the moment a rater is about to
+  // flag a deliberately-mismatched prompt, and the only point where a reminder
+  // still changes the outcome.
+  $("flag-reminder").classList.toggle("hidden", !on);
 }
 
 // read the current on-screen state into answers[idx]

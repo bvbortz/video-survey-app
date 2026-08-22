@@ -94,6 +94,14 @@ a { color: var(--accent); }
 .counter { color: var(--muted); font-size: .85rem; margin: 8px 0 0; }
 .prompt { font-size: 1.1rem; margin: 12px 0 4px; }
 .hint { color: var(--muted); font-size: .78rem; margin: 0 0 18px; }
+/* Warm, not alarming: the rater has done nothing wrong, they have misread a
+   label we wrote badly. */
+.flag-reminder {
+  background: #2a2113; border: 1px solid #6b5a2a; border-radius: 8px;
+  padding: 10px 12px; margin: 8px 0 0; font-size: .85rem;
+  color: #e8d6a8; line-height: 1.5;
+}
+.flag-reminder strong { color: #ffe9b0; }
 .setup-note {
   background: #12161d; border: 1px solid var(--border); border-radius: 8px;
   padding: 12px 14px; font-size: .9rem; color: var(--muted);
