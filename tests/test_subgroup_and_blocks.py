@@ -7,6 +7,7 @@ oversample the two pre-registered subgroups rather than sampling in proportion
 to the pool.
 """
 import asyncio
+from collections import Counter
 
 import pytest
 from mongomock_motor import AsyncMongoMockClient
@@ -282,3 +283,69 @@ def test_ticking_the_flag_box_shows_a_reminder_in_both_languages():
     src = APP_JS.read_text(encoding="utf-8")
     assert 'toggle("hidden", !on)' in src and "flag-reminder" in src, \
         "flag-reminder must be shown/hidden with the checkbox"
+
+
+# --- two forced-choice arms ----------------------------------------------------
+# short_vs_finetuned became 2afc on 2026-08-22. Two things must hold that did not
+# have to when base_vs_finetuned was the only choice arm: the two arms are served
+# equally, and a rater is never asked about the same finetuned clip twice -- the
+# arms share that clip for a given prompt, so two verdicts on it would be
+# correlated while looking independent.
+def _two_arm_db():
+    db = AsyncMongoMockClient()["survey"]
+    pairs = []
+    for i in range(30):
+        pid = f"p{i:02d}"
+        origin = "indirect" if i % 3 == 0 else "kept"
+        misleading = (i % 3 == 1)
+        for arm, legs in (("base_vs_finetuned", ("base", "finetuned")),
+                          ("short_vs_finetuned", ("short", "finetuned"))):
+            pairs.append({
+                "pair_id": f"{pid}__{arm}", "generator": "ltx2", "version": "v1",
+                "prompt_id": pid, "arm": arm, "mode": "2afc",
+                "prompt_text": f"do thing {pid}", "image_file": "img.png",
+                "is_attention_check": False,
+                "origin": origin, "misleading": misleading,
+                "legs": [{"leg": legs[0], "clip_id": f"{pid}_{legs[0]}",
+                          "file": f"{pid}_{legs[0]}.mp4", "auto_score": 0.4},
+                         {"leg": legs[1], "clip_id": f"{pid}_{legs[1]}",
+                          "file": f"{pid}_{legs[1]}.mp4", "auto_score": 0.6}],
+            })
+    asyncio.get_event_loop().run_until_complete(db.pairs.insert_many(pairs))
+    return db
+
+
+def test_both_forced_choice_arms_are_served_and_roughly_balanced():
+    db = _two_arm_db()
+    loop = asyncio.get_event_loop()
+    seen = Counter()
+    for _ in range(40):
+        for it in loop.run_until_complete(build_session_items(db, block="choice")):
+            seen[it["pair"]["arm"]] += 1
+    total = sum(seen.values())
+    assert total > 0
+    assert seen["short_vs_finetuned"] > 0, \
+        "short_vs_finetuned is 2afc now and must reach the choice block"
+    share = seen["base_vs_finetuned"] / total
+    # Equal weighting. Wide band so the clip-sharing skip and quota cascade cannot
+    # make this flaky, but the old all-one-arm behaviour (1.0) must fail.
+    assert 0.35 < share < 0.65, seen
+
+
+def test_a_rater_is_never_asked_about_the_same_finetuned_clip_twice():
+    from app.assignment import pair_token
+    db = _two_arm_db()
+    loop = asyncio.get_event_loop()
+    seen_tokens, seen_clips = set(), set()
+    for _ in range(10):
+        items = loop.run_until_complete(
+            build_session_items(db, seen_tokens=seen_tokens, block="choice"))
+        if not items:
+            break
+        for it in items:
+            clips = {leg["clip_id"] for leg in it["pair"]["legs"]}
+            assert not (clips & seen_clips), (
+                "the two arms share a prompt's finetuned clip; showing both to one "
+                f"rater correlates two 'independent' verdicts: {clips & seen_clips}")
+            seen_clips |= clips
+            seen_tokens.add(pair_token(it["pair"]["pair_id"]))

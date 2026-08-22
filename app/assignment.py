@@ -33,14 +33,24 @@ N_ITEMS_REAL = 9      # real pairs per session, split between the two blocks
 # reintroduced by exporting one and raising this; nothing else needs to change.
 N_ATTENTION = 0
 
-# `base_vs_finetuned` is the comparison the paper's claim rests on and the only one
-# never asked directly, so it gets the larger block until it can actually answer:
-# ~542 non-tie responses for a 56/44 split, ~194 for 60/40. Past the target it drops
-# to a maintenance share and the rating arms get the slots back — the X-vs-short data
-# is what the evaluator-agreement analysis is built on, so it must not starve either.
+# Two arms are now served as forced choice: `base_vs_finetuned` (the comparison the
+# paper's claim rests on, never asked directly before) and `short_vs_finetuned`
+# (added 2026-08-22 — the paper's headline human number had no independent
+# corroboration because that arm was MOS-only, and MOS became opt-in). They are
+# weighted EQUALLY; see _round_robin, which alternates arms within every quota slot.
+#
+# The target is per arm: ~542 non-tie responses for a 56/44 split, ~194 for 60/40.
+# With two arms sharing the block, the count below has to clear twice that before
+# the block shrinks, or the first arm to arrive would sate the second one's budget.
+# Past the target it drops to a maintenance share and the rating arms get the slots
+# back — short_vs_base and short_vs_enhance still feed the evaluator-agreement
+# analysis, so they must not starve either.
+#
+# Note this only governs the legacy `block=None` session. The app now opens in
+# block="choice", which takes every real slot regardless.
 N_CHOICE = 5
 N_CHOICE_SATED = 2
-CHOICE_TARGET = 542
+CHOICE_TARGET = 542 * 2
 
 # --- pre-registered subgroups -------------------------------------------------
 # The open claim is that the finetune's advantage over base concentrates on
@@ -100,7 +110,19 @@ async def _judged_counts(db) -> dict[str, int]:
 
 def _round_robin(pool: list[dict], n: int, chosen: list[dict], used_clips: set) -> None:
     """Round-robin across arms (each least-judged first), skipping any pair that
-    shares a clip with one already chosen (or already seen, if preloaded)."""
+    shares a clip with one already chosen (or already seen, if preloaded).
+
+    This is what makes the two forced-choice arms equally weighted: the alternation
+    is per arm, and the starting arm is shuffled per call, so a 3-slot quota group
+    splits 2/1 one way or the other and evens out across sessions rather than
+    always favouring whichever arm sorts first.
+
+    The clip-sharing skip matters more now that both arms exist.
+    `base_vs_finetuned` and `short_vs_finetuned` share the *finetuned* clip for a
+    given prompt, so without it a rater could be asked about the same finetuned
+    video twice and the two verdicts would be correlated. `used_clips` blocks that
+    inside a session and `seen_clips` blocks it across rounds.
+    """
     by_arm: dict[str, list[dict]] = {}
     for p in pool:
         by_arm.setdefault(p["arm"], []).append(p)
