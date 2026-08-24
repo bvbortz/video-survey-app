@@ -24,12 +24,16 @@ const I18N = {
     // subgroup this round exists to measure.
     setup_note:
       "ℹ️ The <strong>starting image is a real photo</strong>. The prompt and both " +
-      "videos (A and B) are <strong>AI-generated</strong>. Some prompts " +
-      "<strong>deliberately contain a small detail that does not match the image</strong> " +
-      "— a wrong colour, count, or object. That is intentional and part of what we are " +
-      "testing: still just pick the video that handles the description better. " +
+      "videos (A and B) are <strong>AI-generated</strong>. Prompts " +
+      "<strong>may be slightly wrong, inaccurate, or misleading</strong> relative to " +
+      "the image or exact phrasing — evaluate based on the <strong>true intended meaning</strong> " +
+      "of the prompt and the original image, not on literal text errors. " +
+      "Slightly wrong/misleading prompts are intentional and part of what we are testing. " +
       "Use the “there’s a problem” box only when a pair is genuinely unusable — a video " +
-      "will not play, or the content is inappropriate.",
+      "Will not play, or the content is inappropriate.",
+    guideline_title: "IMPORTANT — Prompt & Image Rule:",
+    guideline_text:
+      "Prompts may be slightly wrong, inaccurate, or misleading. Do NOT judge literally — base your evaluation on the true intended meaning of the prompt combined with the original starting image.",
     start: "Start",
     requested_action: "Requested action:",
     // Shown on every item. The setup note is read once and forgotten, and raters
@@ -37,7 +41,7 @@ const I18N = {
     // reminder has to live next to the task, not only on the consent screen.
     hint_line:
       "Starting image = real photo · prompt & both videos = AI-generated · " +
-      "some prompts don’t quite match the image on purpose — just pick the better video",
+      "prompts may be slightly wrong or misleading on purpose — base your rating on true prompt intent & starting image",
     starting_image: "Starting image",
     video_a: "Video A",
     video_b: "Video B",
@@ -47,9 +51,9 @@ const I18N = {
       "This pair is unusable — a video won’t play or is blank, or the content is " +
       "inappropriate",
     flag_reminder:
-      "A prompt that doesn’t quite match the image is <strong>intentional</strong> — " +
-      "please don’t flag it for that. Untick this and just pick the video that " +
-      "handles the description better.",
+      "A prompt that is slightly wrong or misleading relative to the image is <strong>intentional</strong> — " +
+      "please don’t flag it for that. Untick this and base your evaluation on the true intended meaning " +
+      "of the prompt and original image.",
     flag_note_ph:
       "What’s wrong? (e.g. video B never loads, black frames, inappropriate content …)",
     back: "Back",
@@ -99,7 +103,7 @@ const I18N = {
     cats: {
       prompt_adherence: {
         label: "Prompt adherence",
-        tip: "How well the video does what the prompt asked for — the right objects, action and details actually appear and match the request.",
+        tip: "How well the video captures the true intended meaning of the prompt and starting image — the right action and core elements appear, even if the text itself was slightly off.",
       },
       scene_fidelity: {
         label: "Scene fidelity",
@@ -135,24 +139,27 @@ const I18N = {
       "בלחיצה על 'התחל' אתם מסכימים להשתתף.",
     setup_note:
       "ℹ️ <strong>תמונת הפתיחה היא צילום אמיתי</strong>. ההנחיה ושני הסרטונים " +
-      "(A ו-B) <strong>נוצרו בבינה מלאכותית</strong>. חלק מההנחיות " +
-      "<strong>מכילות בכוונה פרט קטן שאינו תואם את התמונה</strong> — צבע, כמות או " +
-      "עצם שגויים. זה מכוון וזה חלק ממה שאנחנו בודקים: פשוט בחרו את הסרטון שמתמודד " +
-      "טוב יותר עם התיאור. סמנו את התיבה 'יש בעיה' רק כשזוג באמת אינו שמיש — סרטון " +
-      "שאינו מתנגן, או תוכן לא הולם.",
+      "(A ו-B) <strong>נוצרו בבינה מלאכותית</strong>. ההנחיות " +
+      "<strong>עשויות להיות מעט שגויות, לא מדוייקות או מטעות</strong> ביחס לתמונה או לניסוח המדויק — " +
+      "יש לבסס את הדירוג על <strong>המשמעות והכוונת האמיתית</strong> של ההנחיה בשילוב תמונת הפתיחה, " +
+      "ולא על שגיאות ניסוח מילוליות. הנחיה מטעה או שגויה היא מכוונת וחלק מהבדיקה. " +
+      "סמנו את התיבה 'יש בעיה' רק כשזוג באמת אינו שמיש — סרטון שאינו מתנגן, או תוכן לא הולם.",
+    guideline_title: "דגש חשוב לגבי ההנחיה והתמונה:",
+    guideline_text:
+      "ההנחיות עשויות להיות מעט שגויות, לא מדויקות או מטעות. נא לא לשפוט באופן מילולי — בססו את הדירוג על הופעת הכוונה והמשמעות האמיתית של ההנחיה בשילוב תמונת הפתיחה.",
     start: "התחל",
     requested_action: "הפעולה המבוקשת:",
     hint_line:
       "תמונת הפתיחה = צילום אמיתי · ההנחיה ושני הסרטונים = תוצרי בינה מלאכותית · " +
-      "חלק מההנחיות אינן תואמות במדויק את התמונה בכוונה — פשוט בחרו את הסרטון הטוב יותר",
+      "ההנחיות עשויות להיות מעט שגויות או מטעות בכוונה — בססו את הדירוג על כוונת ההנחיה ותמונת הפתיחה",
     starting_image: "תמונת הפתיחה",
     video_a: "וידאו A",
     video_b: "וידאו B",
     flag_label:
       "לא ניתן להשתמש בזוג הזה — סרטון שאינו מתנגן או ריק, או תוכן לא הולם",
     flag_reminder:
-      "הנחיה שאינה תואמת במדויק את התמונה היא <strong>מכוונת</strong> — נא לא לסמן " +
-      "בעיה בגלל זה. בטלו את הסימון ופשוט בחרו את הסרטון שמתמודד טוב יותר עם התיאור.",
+      "הנחיה שאינה תואמת במדויק או מעט מטעה ביחס לתמונה היא <strong>מכוונת</strong> — " +
+      "נא לא לסמן בעיה בגלל זה. בטלו את הסימון ובססו את הדירוג על הכוונה האמיתית של ההנחיה ותמונת הפתיחה.",
     flag_note_ph:
       "מה הבעיה? (למשל וידאו B לא נטען, פריימים שחורים, תוכן לא הולם …)",
     back: "חזור",
@@ -192,7 +199,7 @@ const I18N = {
     cats: {
       prompt_adherence: {
         label: "נאמנות להנחיה",
-        tip: "עד כמה הווידאו עושה את מה שההנחיה ביקשה — האובייקטים, הפעולה והפרטים הנכונים אכן מופיעים ותואמים לבקשה.",
+        tip: "עד כמה הווידאו מציג את הכוונה והמשמעות האמיתית של ההנחיה ותמונת הפתיחה — הפעולה והאלמנטים המרכזיים אכן מופיעים, גם אם הטקסט עצמו היה מעט לא מדויק.",
       },
       scene_fidelity: {
         label: "נאמנות לסצנה",
@@ -255,6 +262,8 @@ function applyStaticI18n() {
 
   $("prompt-label").textContent = t("requested_action");
   $("hint-line").textContent = t("hint_line");
+  $("guideline-title").textContent = t("guideline_title");
+  $("guideline-text").textContent = t("guideline_text");
   $("cap-starting-image").textContent = t("starting_image");
   $("label-video-a").textContent = t("video_a");
   $("label-video-b").textContent = t("video_b");

@@ -285,6 +285,22 @@ def test_ticking_the_flag_box_shows_a_reminder_in_both_languages():
         "flag-reminder must be shown/hidden with the checkbox"
 
 
+def test_prompt_intent_guidance_in_both_languages():
+    en, he = _block("en"), _block("he")
+    assert "guideline_title:" in en and "guideline_text:" in en
+    assert "guideline_title:" in he and "guideline_text:" in he
+    assert "true intended meaning" in en
+    assert "misleading" in en
+    assert "הכוונת האמיתית" in he or "כוונת" in he
+    assert "מטעות" in he or "שגויות" in he
+
+    # Check html markup
+    index_html = (APP_JS.parent / "index.html").read_text(encoding="utf-8")
+    assert 'id="guideline-banner"' in index_html
+    assert 'id="guideline-title"' in index_html
+    assert 'id="guideline-text"' in index_html
+
+
 # --- two forced-choice arms ----------------------------------------------------
 # short_vs_finetuned became 2afc on 2026-08-22. Two things must hold that did not
 # have to when base_vs_finetuned was the only choice arm: the two arms are served
