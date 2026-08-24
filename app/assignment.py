@@ -100,6 +100,24 @@ def _clips(pair: dict) -> set:
     return {leg["clip_id"] for leg in pair["legs"]}
 
 
+# How strongly a `priority` pair is favoured, per pair per selection call. Not a
+# quota and not a filter: at 0.0 the flag does nothing and selection is exactly
+# what it was before, at 1.0 priority pairs always sort first but STILL fall
+# through to the general pool once a rater has exhausted them.
+PRIORITY_SHARE = 0.85
+
+
+def _is_priority(pair: dict) -> bool:
+    """Truthy `priority`, tolerating the string booleans the loader writes.
+
+    Existing pair documents store `active`/`misleading` as the strings "True" and
+    "False", so a plain truth test would read "False" as true. Anything not
+    recognisably true is false, which fails safe: the pair is simply not boosted.
+    """
+    v = pair.get("priority")
+    return v is True or (isinstance(v, str) and v.strip().lower() == "true")
+
+
 async def _judged_counts(db) -> dict[str, int]:
     counts: dict[str, int] = {}
     cur = db.responses.aggregate([{"$group": {"_id": "$pair_id", "n": {"$sum": 1}}}])
@@ -122,12 +140,24 @@ def _round_robin(pool: list[dict], n: int, chosen: list[dict], used_clips: set) 
     given prompt, so without it a rater could be asked about the same finetuned
     video twice and the two verdicts would be correlated. `used_clips` blocks that
     inside a session and `seen_clips` blocks it across rounds.
+
+    Pairs flagged `priority` are drawn to the front with probability
+    PRIORITY_SHARE, independently per pair per call. This is a bias, not a filter:
+    an unlucky priority pair sorts with everyone else, and once a rater has seen
+    all of them (dedup is unchanged) the session fills from the rest instead of
+    ending. Concentrating verdicts on a small set is what makes several INDEPENDENT
+    judgements per pair possible; spread evenly over 569 pairs per arm, a few
+    hundred new verdicts would give one apiece and support no rater-level statistic
+    at all.
     """
     by_arm: dict[str, list[dict]] = {}
     for p in pool:
         by_arm.setdefault(p["arm"], []).append(p)
     for a in by_arm:
-        by_arm[a].sort(key=lambda p: (p["_n"], random.random()))
+        by_arm[a].sort(key=lambda p: (0 if (_is_priority(p) and
+                                            random.random() < PRIORITY_SHARE)
+                                      else 1,
+                                      p["_n"], random.random()))
     arms = list(by_arm)
     random.shuffle(arms)
     idx = {a: 0 for a in arms}

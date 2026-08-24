@@ -95,10 +95,14 @@ async def health():
 
 
 @app.get("/api/session")
-async def create_session(seen: str = "", block: str = ""):
+async def create_session(seen: str = "", block: str = "", rater: str = ""):
     db = dbmod.get_db()
     # `seen` = comma-separated opaque pair tokens this browser has already rated
     seen_tokens = {s for s in seen.split(",") if s}
+    # `rater` = pseudonymous per-browser id (see raterId() in app.js). Length-capped
+    # because it arrives from the client and is stored verbatim; absent or malformed
+    # is normal (storage can be blocked) and must never deny a session.
+    rater_id = rater.strip()[:64] or None
     # block="choice" is the endless continuation: comparisons only, no rating
     # block. Unrecognised values fall back to the default mixed session rather
     # than erroring, so an old cached client can never be locked out.
@@ -131,6 +135,9 @@ async def create_session(seen: str = "", block: str = ""):
         "assignments": assignments,
         "n_items": len(items),
         "block": block or "default",
+        # Lets several sessions be recognised as one rater. Sessions alone cannot:
+        # a returning respondent starts a new one and reads as a second person.
+        "rater_id": rater_id,
     })
 
     # what the client sees — leg identity hidden, just URLs for slot A / slot B
@@ -198,6 +205,10 @@ class ResponseIn(BaseModel):
     # `note` describes what's wrong
     flag_issue: bool = False
     note: str = Field(default="", max_length=1000)
+    # Pseudonymous per-browser id, echoed on every response so a verdict carries
+    # its rater without joining through the session. Optional: a client with
+    # storage blocked still rates, just anonymously.
+    rater_id: str | None = Field(default=None, max_length=64)
 
     # Unflagged responses must be complete (scene_fidelity exempt: pre-2026-07-11
     # cached clients don't have that slider). Flagged responses may be partial.
@@ -294,6 +305,7 @@ async def submit_response(body: ResponseIn, background: BackgroundTasks):
         "elapsed_ms": body.elapsed_ms,
         "flag_issue": body.flag_issue,
         "note": body.note.strip(),
+        "rater_id": body.rater_id or None,
     }
     if mode == "2afc":
         # Stored as the leg, never as the display letter: "A" is meaningless once this

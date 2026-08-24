@@ -298,6 +298,37 @@ function setLang(next) {
   }
 }
 
+// ---------------------------------------------------------------- rater id
+// A pseudonymous id that survives across visits, so several sessions from the
+// same person can be recognised as one rater. Sessions alone cannot do this: a
+// returning respondent starts a new session and the two look like two people,
+// which is why every rater-level statistic was previously uncomputable.
+//
+// This is per-browser, and honest about it in both directions. Clearing storage,
+// private browsing, or a second device each mint a new id, so it UNDERCOUNTS
+// returns; it never merges two people into one, which is the safer error. It is
+// not identity and carries nothing personal -- a random v4 UUID, no fingerprint.
+const RATER_KEY = "survey_rater_id";
+function raterId() {
+  try {
+    let id = localStorage.getItem(RATER_KEY);
+    if (!id) {
+      id = (crypto.randomUUID && crypto.randomUUID()) ||
+           // older Safari: a v4-shaped id from getRandomValues
+           ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, c =>
+             (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4)
+               .toString(16));
+      localStorage.setItem(RATER_KEY, id);
+    }
+    return id;
+  } catch {
+    // Storage blocked. Rate anonymously rather than refusing the session --
+    // a missing id costs us one rater-level datum, a refused session costs
+    // us the verdicts too.
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------- session
 const SEEN_KEY = "survey_seen_tokens";
 function getSeen() {
@@ -322,6 +353,8 @@ async function loadSession(block, skipConsent) {
     const p = new URLSearchParams();
     if (seen.length) p.set("seen", seen.join(","));
     if (BLOCK) p.set("block", BLOCK);
+    const rid = raterId();
+    if (rid) p.set("rater", rid);
     const qs = p.toString();
     const r = await fetch("/api/session" + (qs ? "?" + qs : ""));
     if (!r.ok) throw new Error("session " + r.status);
@@ -594,6 +627,9 @@ function sendRating(it, ans, elapsed) {
     elapsed_ms: elapsed,
     flag_issue: ans.issue,
     note: ans.note,
+    // Sent per response as well as on the session, so a verdict carries its
+    // rater without a join -- and still does if the session write was lost.
+    rater_id: raterId(),
   };
   if (isChoice(it)) {
     if (ans.choice !== null && ans.choice !== undefined) payload.choice = ans.choice;
