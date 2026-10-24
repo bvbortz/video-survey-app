@@ -40,3 +40,7 @@ async def ensure_indexes(db) -> None:
     # `active` filters every pair selection; shortlist backs the admin gallery.
     await db.pairs.create_index("active")
     await db.shortlist.create_index("pair_id", unique=True)
+    # Ten Clip Check (app/check.py)
+    await db.check_clips.create_index("clip_id", unique=True)
+    await db.check_answers.create_index("clip_id")
+    await db.check_answers.create_index("rater_id")

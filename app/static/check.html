@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ten Clip Check</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    #app { max-width: 640px; }
+    .check-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+    .check-head h1 { font-size: 1.3rem; margin: 0; }
+    .count { color: var(--muted); font-variant-numeric: tabular-nums; }
+    .bar { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; margin: 10px 0 14px; }
+    .bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .25s; }
+    details.rules { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; }
+    details.rules summary { cursor: pointer; font-weight: 700; }
+    details.rules ul { padding-inline-start: 20px; margin: 8px 0 0; display: grid; gap: 6px; }
+    .label { font-size: .75rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0 0 4px; }
+    .ptext { font-size: 1.1rem; font-weight: 700; margin: 0 0 12px; }
+    .ptext-en { color: var(--muted); font-size: .85rem; margin: -8px 0 12px; }
+    .media { display: grid; grid-template-columns: 96px 1fr; gap: 10px; align-items: start; }
+    .media img { width: 96px; border-radius: 6px; border: 1px solid var(--border); }
+    .media figure { margin: 0; min-width: 0; }
+    .media figcaption { font-size: .75rem; color: var(--muted); margin-top: 4px; }
+    video { width: 100%; border-radius: 8px; background: #000; display: block; }
+    .verdicts { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: 14px 0 8px; }
+    .verdicts button { font: inherit; font-weight: 700; padding: 14px 6px; border-radius: 10px; cursor: pointer;
+      border: 2px solid var(--border); background: var(--card); color: var(--fg); }
+    .verdicts button[data-v="pass"] { border-color: #38b000; color: #5fd35f; }
+    .verdicts button[data-v="fail"] { border-color: #d9534f; color: #f07b70; }
+    .verdicts button:disabled { opacity: .4; cursor: default; }
+    textarea { font: inherit; width: 100%; min-height: 44px; padding: 8px 10px; border-radius: 8px;
+      border: 1px solid var(--border); background: var(--card); color: var(--fg); resize: vertical; }
+    .hint { color: var(--muted); font-size: .85rem; margin: 0 0 8px; }
+    .back { background: none; border: 0; color: var(--accent); cursor: pointer; padding: 0; margin-top: 10px; font: inherit; }
+    [dir="rtl"] .media { direction: rtl; }
+  </style>
+</head>
+<body>
+  <main id="app">
+    <div class="langbar" role="group" aria-label="Language / שפה">
+      <button id="lang-en" class="lang-btn" type="button">English</button>
+      <button id="lang-he" class="lang-btn" type="button">עברית</button>
+    </div>
+    <div class="check-head">
+      <h1 id="title"></h1>
+      <span class="count" id="count"></span>
+    </div>
+    <div class="bar"><i id="bar"></i></div>
+    <details class="rules" id="rules" open>
+      <summary id="rules-title"></summary>
+      <div id="rules-body"></div>
+    </details>
+    <section id="main" aria-live="polite"><p class="hint" id="msg"></p></section>
+  </main>
+  <script src="/check.js"></script>
+</body>
+</html>

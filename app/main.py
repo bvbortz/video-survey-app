@@ -10,6 +10,7 @@ Endpoints:
   POST /api/response            store the 2x6 scores for one item
   GET  /admin                   cookie-gated coverage dashboard
   GET  /admin/export            cookie-gated full response dump (JSON)
+  GET  /check, /api/check/*     Ten Clip Check, a separate pass/fail study (app/check.py)
   GET  /                        static one-page frontend
 """
 from __future__ import annotations
@@ -28,6 +29,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from . import db as dbmod
+from .check import router as check_router
 from .assignment import ACTIVE, build_session_items, pair_token
 
 logger = logging.getLogger("survey")
@@ -77,6 +79,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="video-survey-app", lifespan=lifespan)
+app.include_router(check_router)
 
 
 def _now():
