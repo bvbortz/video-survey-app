@@ -53,6 +53,21 @@ def test_pick_round_tier1_first_until_target():
     assert all(p["tier"] == 2 for p in out)
 
 
+def test_pick_round_new_prompts_before_tier():
+    """a second round gives fresh prompts before more tier-1 pairs of prompts already seen"""
+    pairs = _pairs(_clips())
+    first = compare.pick_round(pairs, {}, set(), random.Random(0))
+    seen = {p["pair_id"] for p in first}
+    second = compare.pick_round(pairs, {}, seen, random.Random(1))
+    fresh = {p["prompt_key"] for p in second} - {p["prompt_key"] for p in first}
+    assert len(fresh) == 2   # the only 2 of 12 prompts round 1 did not use
+    # the repeated prompts get a pair with as few watched clips as there is (1 of 2 here)
+    watched = {c for p in first for c in (p["a"], p["b"])}
+    for p in second:
+        if p["prompt_key"] not in fresh:
+            assert (p["a"] in watched) + (p["b"] in watched) == 1
+
+
 def test_round_answer_dedupe_and_no_repeat(client):
     r = client.get("/api/compare/round", params={"rater": "r1"}).json()
     assert len(r["items"]) == 10 and r["left"] == 36 - 10
