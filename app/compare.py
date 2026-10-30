@@ -3,8 +3,9 @@
 The pairwise companion of the Ten Clip Check (app/check.py), on the same clips, Mongo
 and Blob files. A pass/fail answer depends on where each person draws the line; one
 person comparing two clips of the same prompt does not. Each round is 10 pairs, one per
-prompt, none this rater has answered. Pairs rater 1 separated (tier 1) are served first
-until each has TARGET answers, then the rest, fewest answers first. Which clip is shown
+prompt, none this rater has answered, prompts and clips they have not seen first. Among
+those, pairs rater 1 separated (tier 1) are served first until each has TARGET answers,
+then the rest, fewest answers first. Which clip is shown
 as A is random per showing and recorded. Pairs are loaded by scripts/load_check_pairs.py
 (manifest from the main repo's finetune-data-gen/export_check_pairs.py).
 
@@ -50,11 +51,17 @@ async def compare_page():
 
 def pick_round(pairs: list[dict], counts: dict[str, int], seen: set[str], rng: random.Random,
                n: int = N_ROUND) -> list[dict]:
-    """n unseen pairs, one per prompt: tier-1 pairs short of TARGET first, then by tier,
-    then fewest answers, ties at random."""
+    """n unseen pairs, one per prompt. A prompt this rater has not had comes first, then a
+    pair with fewer clips they have already watched (a new pair of familiar clips feels
+    like a repeat); then tier-1 pairs short of TARGET, then by tier, then fewest answers,
+    ties at random."""
+    had = [p for p in pairs if p["pair_id"] in seen]
+    old_prompts = {p["prompt_key"] for p in had}
+    old_clips = {c for p in had for c in (p["a"], p["b"])}
     left = [p for p in pairs if p["pair_id"] not in seen]
     rng.shuffle(left)
-    left.sort(key=lambda p: (counts.get(p["pair_id"], 0) >= TARGET, p["tier"], counts.get(p["pair_id"], 0)))
+    left.sort(key=lambda p: (p["prompt_key"] in old_prompts, (p["a"] in old_clips) + (p["b"] in old_clips),
+                             counts.get(p["pair_id"], 0) >= TARGET, p["tier"], counts.get(p["pair_id"], 0)))
     out, used = [], set()
     for p in left:
         if len(out) == n:
