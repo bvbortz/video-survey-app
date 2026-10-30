@@ -35,6 +35,8 @@
     textarea { font: inherit; width: 100%; min-height: 44px; padding: 8px 10px; border-radius: 8px;
       border: 1px solid var(--border); background: var(--card); color: var(--fg); resize: vertical; }
     .hint { color: var(--muted); font-size: .85rem; margin: 0 0 8px; }
+    .flag { display: flex; gap: 8px; align-items: center; font-size: .9rem; margin: 0 0 8px; cursor: pointer; }
+    .flag input { width: 18px; height: 18px; flex: none; }
     .back { background: none; border: 0; color: var(--accent); cursor: pointer; padding: 0; margin-top: 10px; font: inherit; }
     [dir="rtl"] .prompt, [dir="rtl"] .pair { direction: rtl; }
     @media (max-width: 600px) { .pair { grid-template-columns: 1fr; } }

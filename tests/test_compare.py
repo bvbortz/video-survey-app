@@ -80,14 +80,17 @@ def test_round_answer_dedupe_and_no_repeat(client):
                                                       "elapsed_ms": 1000, "rater_id": "r1"})
         assert ok.status_code == 200
     client.post("/api/compare/answer", json={"pair_id": it["pair_id"], "first": it["first"], "second": it["second"],
-                                             "choice": "same", "elapsed_ms": 900, "rater_id": "r1"})
+                                             "choice": "same", "elapsed_ms": 900, "rater_id": "r1",
+                                             "prompt_flag": True})
     r2 = client.get("/api/compare/round", params={"rater": "r1"}).json()
     assert not {i["pair_id"] for i in r2["items"]} & {i["pair_id"] for i in r["items"]}
     db = dbmod.get_db()
     assert _run(db.compare_answers.count_documents({"rater_id": "r1"})) == 10
     doc = _run(db.compare_answers.find_one({"pair_id": r["items"][1]["pair_id"]}))
     assert doc["better"] == r["items"][1]["first"]
-    assert _run(db.compare_answers.find_one({"pair_id": it["pair_id"]}))["better"] is None
+    redone = _run(db.compare_answers.find_one({"pair_id": it["pair_id"]}))
+    assert redone["better"] is None and redone["prompt_flag"] is True
+    assert doc["prompt_flag"] is False
 
 
 def test_retired_clip_drops_its_pairs(client):

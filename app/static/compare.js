@@ -10,6 +10,7 @@ const I18N = {
 <li><b>Small things count least:</b> a bit slow, slightly stiff, a small detail off.</li>
 <li><b>About the same</b> when neither is clearly better: both good, both bad in a similar way, or you really cannot tell.</li>
 </ul>
+<p>If the text itself seems strange or impossible for the picture, tick the box under the buttons, and still choose.</p>
 <p class="hint">Ten pairs take about five minutes. Your answers save as you go.</p>`,
     loading: "Loading the clips…",
     textLabel: "Text the videos should follow",
@@ -18,6 +19,7 @@ const I18N = {
     replay: "↻ Play both from the start",
     unlock: "The buttons unlock once both clips have played through.",
     note: "Why? (optional)",
+    flag: "The text is strange or impossible for this picture",
     back: "← Previous pair",
     counter: (i, n) => `${i} / ${n}`,
     done: "Done. Thank you.",
@@ -36,6 +38,7 @@ const I18N = {
 <li><b>דברים קטנים נחשבים הכי פחות:</b> קצת איטי, קצת נוקשה, פרט קטן לא מדויק.</li>
 <li><b>בערך אותו דבר</b> כשאף אחד מהם לא טוב יותר בבירור: שניהם טובים, שניהם גרועים באופן דומה, או שבאמת אי אפשר לדעת.</li>
 </ul>
+<p>אם הטקסט עצמו נראה מוזר או בלתי אפשרי לתמונה, סמנו את התיבה מתחת לכפתורים, ובכל זאת בחרו.</p>
 <p class="hint">עשרה זוגות לוקחים בערך חמש דקות. התשובות נשמרות תוך כדי.</p>`,
     loading: "טוען את הסרטונים…",
     textLabel: "הטקסט שהסרטונים צריכים לבצע",
@@ -44,6 +47,7 @@ const I18N = {
     replay: "↻ הפעלת שניהם מההתחלה",
     unlock: "הכפתורים נפתחים אחרי ששני הסרטונים הוצגו עד הסוף.",
     note: "למה? (לא חובה)",
+    flag: "הטקסט מוזר או בלתי אפשרי לתמונה הזו",
     back: "→ הזוג הקודם",
     counter: (i, n) => `${i} / ${n}`,
     done: "סיימתם. תודה!",
@@ -115,10 +119,11 @@ function show() {
   const he = lang === "he" && it.prompt_text_he;
   const vids = [video(it.first_url), video(it.second_url)];
   const note = el("textarea", { id: "note", rows: "2", placeholder: T().note });
+  const flag = el("input", { type: "checkbox", id: "flag" });
   const btns = ["first", "same", "second"].map((v) => {
     const b = el("button", { type: "button", "data-v": v }, T()[v]);
     b.disabled = true;
-    b.addEventListener("click", () => answer(it, v, note.value.trim()));
+    b.addEventListener("click", () => answer(it, v, note.value.trim(), flag.checked));
     return b;
   });
   const unlock = () => btns.forEach((b) => (b.disabled = false));
@@ -142,6 +147,7 @@ function show() {
     replay,
     el("div", { class: "verdicts" }, ...btns),
     el("p", { class: "hint" }, T().unlock),
+    el("label", { class: "flag" }, flag, " ", T().flag),
     note);
   if (pos > 0) {
     const back = el("button", { type: "button", class: "back" }, T().back);
@@ -151,8 +157,8 @@ function show() {
   shownAt = Date.now();
 }
 
-function answer(it, choice, note) {
-  const body = { pair_id: it.pair_id, first: it.first, second: it.second, choice, note,
+function answer(it, choice, note, promptFlag) {
+  const body = { pair_id: it.pair_id, first: it.first, second: it.second, choice, note, prompt_flag: promptFlag,
                  elapsed_ms: Date.now() - shownAt, round, lang, rater_id: raterId() };
   const send = (n) => fetch("/api/compare/answer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
     .then((r) => { if (!r.ok && r.status >= 500 && n > 0) throw new Error(r.status); })
