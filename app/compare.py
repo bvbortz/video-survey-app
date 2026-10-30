@@ -106,6 +106,7 @@ class AnswerIn(BaseModel):
     second: str = Field(max_length=64)
     choice: str
     note: str = Field(default="", max_length=1000)
+    prompt_flag: bool = False      # the rater finds the text itself strange or impossible
     elapsed_ms: int = Field(ge=0)
     round: int = Field(default=1, ge=1)
     lang: str = Field(default="en", max_length=8)
@@ -140,7 +141,7 @@ async def compare_answer(body: AnswerIn, background: BackgroundTasks):
     better = {"first": body.first, "second": body.second}.get(body.choice)   # None = about the same
     doc = {"rater_id": body.rater_id or None, "pair_id": body.pair_id, "first": body.first,
            "second": body.second, "choice": body.choice, "better": better, "note": body.note.strip(),
-           "elapsed_ms": body.elapsed_ms, "round": body.round, "lang": body.lang,
+           "prompt_flag": body.prompt_flag, "elapsed_ms": body.elapsed_ms, "round": body.round, "lang": body.lang,
            "created_at": datetime.now(timezone.utc)}
     background.add_task(_persist, db, doc)
     return {"ok": True}
