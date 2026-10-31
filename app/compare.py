@@ -11,7 +11,7 @@ as A is random per showing and recorded. Pairs are loaded by scripts/load_check_
 
 Endpoints:
   GET  /compare                 the page (static/compare.html)
-  GET  /api/compare/round       10 pairs for this rater
+  GET  /api/compare/round       10 pairs for this rater (lang=ru: only prompts with a Russian text)
   POST /api/compare/answer      one choice; (rater_id, pair_id) is the de-dupe key
   GET  /admin/compare           cookie-gated counts
   GET  /admin/compare/export    cookie-gated full answer dump (JSON)
@@ -73,7 +73,7 @@ def pick_round(pairs: list[dict], counts: dict[str, int], seen: set[str], rng: r
 
 
 @router.get("/api/compare/round")
-async def compare_round(rater: str = "", seen: str = ""):
+async def compare_round(rater: str = "", seen: str = "", lang: str = "en"):
     db = dbmod.get_db()
     rater_id = rater.strip()[:64] or None
     done = {s for s in seen.split(",") if s}   # this browser's memory, plus the server's
@@ -82,6 +82,8 @@ async def compare_round(rater: str = "", seen: str = ""):
     clips = {c["clip_id"]: c async for c in db.check_clips.find(ACTIVE, {"_id": 0})}
     # a pair is live only while both of its clips are
     pairs = [p async for p in db.check_pairs.find(ACTIVE, {"_id": 0}) if p["a"] in clips and p["b"] in clips]
+    if lang == "ru":   # Russian raters get only prompts that have a Russian text
+        pairs = [p for p in pairs if clips[p["a"]].get("prompt_text_ru")]
     if not pairs:
         raise HTTPException(503, "no pairs loaded")
     counts = {}
@@ -94,7 +96,8 @@ async def compare_round(rater: str = "", seen: str = ""):
         first, second = (p["a"], p["b"]) if rng.random() < 0.5 else (p["b"], p["a"])
         c = clips[first]
         items.append({"pair_id": p["pair_id"], "prompt_text": c["prompt_text"],
-                      "prompt_text_he": c.get("prompt_text_he"), "image_url": _video_url(c["image_file"]),
+                      "prompt_text_he": c.get("prompt_text_he"), "prompt_text_ru": c.get("prompt_text_ru"),
+                      "image_url": _video_url(c["image_file"]),
                       "first": first, "second": second,
                       "first_url": _video_url(c["file"]), "second_url": _video_url(clips[second]["file"])})
     return {"left": sum(p["pair_id"] not in done for p in pairs) - len(pick), "items": items}

@@ -112,3 +112,14 @@ def test_page_served_and_admin_gated(client):
     assert client.get("/compare").status_code == 200
     assert client.get("/admin/compare").status_code == 401
     assert client.get("/admin/compare/export").status_code == 401
+
+
+def test_russian_round_only_prompts_with_russian_text(client):
+    db = dbmod.get_db()
+    _run(db.check_clips.update_many({"prompt_key": {"$in": ["p03", "p04"]}},
+                                    {"$set": {"prompt_text_ru": "сделай"}}))
+    r = client.get("/api/compare/round", params={"rater": "ru1", "lang": "ru"}).json()
+    assert {i["pair_id"][:3] for i in r["items"]} == {"c03", "c04"}
+    assert all(i["prompt_text_ru"] == "сделай" for i in r["items"]) and r["left"] == 6 - 2
+    en = client.get("/api/compare/round", params={"rater": "en1"}).json()
+    assert len(en["items"]) == 10
