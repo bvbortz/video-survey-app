@@ -56,10 +56,40 @@ const I18N = {
     again: "סבב נוסף של 10",
     error: "לא ניתן לטעון את הסרטונים. בדקו את החיבור וטענו את הדף מחדש.",
   },
+  ru: {
+    title: "Какое видео лучше",
+    rulesTitle: "Как выбирать (1 минута)",
+    rules: `<p>Оба видео созданы искусственным интеллектом из одной и той же картинки и одного и того же текста. Посмотрите оба и выберите то, которое лучше справилось с задачей.</p>
+<ul>
+<li><b>Сначала:</b> какое из них делает то, что просит текст: нужное действие, нужным человеком или предметом, в нужном направлении.</li>
+<li><b>Затем:</b> в каком меньше проблем или они мельче: что-то плавится, меняет форму, сливается, появляется или исчезает из ниоткуда; видео скачет или обрывается; оно начинается не с картинки.</li>
+<li><b>Мелочи важны меньше всего:</b> немного медленно, немного скованно, небольшая деталь не совпадает.</li>
+<li><b>Примерно одинаково</b> — когда ни одно не лучше явно: оба хорошие, оба плохие похожим образом, или действительно нельзя сказать.</li>
+</ul>
+<p>Если сам текст кажется странным или невозможным для этой картинки, поставьте галочку под кнопками и всё равно выберите.</p>
+<p class="hint">Десять пар занимают около пяти минут. Ответы сохраняются по ходу.</p>`,
+    loading: "Загружаем видео…",
+    textLabel: "Текст, которому должны следовать видео",
+    picture: "Начальная картинка",
+    first: "A лучше", same: "Примерно одинаково", second: "B лучше",
+    replay: "↻ Запустить оба сначала",
+    unlock: "Кнопки откроются, когда оба видео проиграются до конца.",
+    note: "Почему? (необязательно)",
+    flag: "Текст странный или невозможный для этой картинки",
+    back: "← Предыдущая пара",
+    counter: (i, n) => `${i} / ${n}`,
+    done: "Готово. Спасибо!",
+    more: (n) => `Осталось ещё ${n} пар, которые вы не видели. Следующий раунд даст десять других.`,
+    allDone: "Вы сравнили все пары. Спасибо!",
+    again: "Ещё раунд из 10",
+    error: "Не удалось загрузить видео. Проверьте соединение и обновите страницу.",
+  },
 };
+const QS = new URLSearchParams(location.search);
 const LANG_KEY = "survey_lang", RATER_KEY = "survey_rater_id", SEEN_KEY = "compare_seen", ROUND_KEY = "compare_round";
 let lang = "en";
 try { const s = localStorage.getItem(LANG_KEY); if (s && I18N[s]) lang = s; } catch {}
+if (I18N[QS.get("lang")]) lang = QS.get("lang");
 let items = [], pos = 0, shownAt = 0, left = 0, round = 1;
 const $ = (id) => document.getElementById(id);
 const T = () => I18N[lang];
@@ -87,16 +117,18 @@ function el(tag, attrs = {}, ...kids) {
 }
 
 function setLang(l) {
+  const refetch = items.length && (l === "ru") !== (lang === "ru");   // ru is served its own pairs
   lang = l;
   try { localStorage.setItem(LANG_KEY, l); } catch {}
   document.documentElement.lang = l;
   document.documentElement.dir = l === "he" ? "rtl" : "ltr";
   $("lang-en").classList.toggle("active", l === "en");
   $("lang-he").classList.toggle("active", l === "he");
+  $("lang-ru").classList.toggle("active", l === "ru");
   $("title").textContent = T().title;
   $("rules-title").textContent = T().rulesTitle;
   $("rules-body").innerHTML = T().rules;
-  if (items.length) show(); else $("msg").textContent = T().loading;
+  if (refetch) load(); else if (items.length) show(); else $("msg").textContent = T().loading;
 }
 
 function header() {
@@ -116,7 +148,8 @@ function show() {
   main.replaceChildren();
   if (pos >= items.length) return finished();
   const it = items[pos];
-  const he = lang === "he" && it.prompt_text_he;
+  const local = (lang === "he" && it.prompt_text_he) || (lang === "ru" && it.prompt_text_ru) || null;
+  const he = lang === "he" && !!local;
   const vids = [video(it.first_url), video(it.second_url)];
   const note = el("textarea", { id: "note", rows: "2", placeholder: T().note });
   const flag = el("input", { type: "checkbox", id: "flag" });
@@ -139,8 +172,8 @@ function show() {
       el("figure", {}, el("img", { src: it.image_url, alt: T().picture }), el("figcaption", {}, T().picture)),
       el("div", {},
         el("p", { class: "label" }, T().textLabel),
-        el("p", { class: "ptext", dir: he ? "rtl" : "ltr" }, he ? it.prompt_text_he : it.prompt_text),
-        ...(he ? [el("p", { class: "ptext-en", dir: "ltr" }, it.prompt_text)] : []))),
+        el("p", { class: "ptext", dir: he ? "rtl" : "ltr" }, local || it.prompt_text),
+        ...(local ? [el("p", { class: "ptext-en", dir: "ltr" }, it.prompt_text)] : []))),
     el("div", { class: "pair" },
       el("figure", {}, el("figcaption", { dir: "ltr" }, "A"), vids[0]),
       el("figure", {}, el("figcaption", { dir: "ltr" }, "B"), vids[1])),
@@ -185,7 +218,7 @@ async function load() {
   items = []; pos = 0; header();
   $("main").replaceChildren(el("p", { class: "hint", id: "msg" }, T().loading));
   try {
-    const q = new URLSearchParams({ rater: raterId() || "", seen: [...seen()].join(",") });
+    const q = new URLSearchParams({ rater: raterId() || "", seen: [...seen()].join(","), lang });
     const r = await fetch(`/api/compare/round?${q}`);
     if (!r.ok) throw new Error(r.status);
     const d = await r.json();
@@ -197,5 +230,6 @@ async function load() {
 try { round = parseInt(localStorage.getItem(ROUND_KEY) || "1", 10) || 1; } catch {}
 $("lang-en").addEventListener("click", () => setLang("en"));
 $("lang-he").addEventListener("click", () => setLang("he"));
+$("lang-ru").addEventListener("click", () => setLang("ru"));
 setLang(lang);
 load();
