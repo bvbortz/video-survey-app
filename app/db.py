@@ -44,3 +44,7 @@ async def ensure_indexes(db) -> None:
     await db.check_clips.create_index("clip_id", unique=True)
     await db.check_answers.create_index("clip_id")
     await db.check_answers.create_index("rater_id")
+    # Rate the Clips (app/rate.py)
+    await db.rate_prompts.create_index("prompt_key", unique=True)
+    await db.rate_answers.create_index("prompt_key")
+    await db.rate_answers.create_index("rater_id")
