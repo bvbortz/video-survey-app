@@ -54,6 +54,32 @@ const I18N = {
     again: "סבב נוסף של 10",
     error: "לא ניתן לטעון את הסרטונים. בדקו את החיבור וטענו את הדף מחדש.",
   },
+  ru: {
+    title: "Проверка десяти видео",
+    rulesTitle: "Как оценивать (1 минута)",
+    rules: `<p>Каждое видео создано искусственным интеллектом из показанной картинки и текста над ней. Посмотрите видео, затем скажите, справляется ли оно с задачей.</p>
+<ul>
+<li><b>Брак</b>, если то, что просит текст, не происходит, происходит наоборот или это делает не тот человек или предмет.</li>
+<li><b>Брак</b>, если что-то плавится, меняет форму, сливается, или появляется либо исчезает из ниоткуда.</li>
+<li><b>Брак</b>, если видео прыгает или обрывается, или начинается не с картинки.</li>
+<li><b>Годится</b> во всех остальных случаях. Мелочи не мешают: немного медленно, чуть скованно, небольшая деталь не та.</li>
+<li><b>Не уверен(а)</b> можно выбрать, когда действительно не понять.</li>
+</ul>
+<p class="hint">Десять видео занимают около трёх минут. Ответы сохраняются сразу.</p>`,
+    loading: "Загрузка видео…",
+    textLabel: "Текст, которому должно следовать видео",
+    picture: "Начальная картинка",
+    pass: "Годится", fail: "Брак", unsure: "Не уверен(а)",
+    unlock: "Кнопки откроются, когда видео проиграется до конца.",
+    note: "Что пошло не так? (необязательно)",
+    back: "← Предыдущее видео",
+    counter: (i, n) => `${i} / ${n}`,
+    done: "Готово. Спасибо!",
+    more: (n) => `Осталось ещё ${n} видео, которые вы не видели. Следующий раунд даст десять других.`,
+    allDone: "Вы оценили все видео. Спасибо!",
+    again: "Ещё раунд из 10",
+    error: "Не удалось загрузить видео. Проверьте подключение и перезагрузите страницу.",
+  },
 };
 const LANG_KEY = "survey_lang", RATER_KEY = "survey_rater_id", SEEN_KEY = "check_seen", ROUND_KEY = "check_round";
 let lang = "en";
@@ -91,6 +117,7 @@ function setLang(l) {
   document.documentElement.dir = l === "he" ? "rtl" : "ltr";
   $("lang-en").classList.toggle("active", l === "en");
   $("lang-he").classList.toggle("active", l === "he");
+  $("lang-ru").classList.toggle("active", l === "ru");
   $("title").textContent = T().title;
   $("rules-title").textContent = T().rulesTitle;
   $("rules-body").innerHTML = T().rules;
@@ -108,7 +135,8 @@ function show() {
   main.replaceChildren();
   if (pos >= items.length) return finished();
   const it = items[pos];
-  const he = lang === "he" && it.prompt_text_he;
+  const local = (lang === "he" && it.prompt_text_he) || (lang === "ru" && it.prompt_text_ru) || null;
+  const he = lang === "he" && !!local;
   const vid = el("video", { src: it.video_url, controls: "", muted: "", autoplay: "", playsinline: "", loop: "", preload: "auto" });
   vid.muted = true;
   const note = el("textarea", { id: "note", rows: "2", placeholder: T().note });
@@ -124,8 +152,8 @@ function show() {
   setTimeout(unlock, 15000);   // a stalled video must not trap the rater
   main.append(
     el("p", { class: "label" }, T().textLabel),
-    el("p", { class: "ptext", dir: he ? "rtl" : "ltr" }, he ? it.prompt_text_he : it.prompt_text),
-    ...(he ? [el("p", { class: "ptext-en", dir: "ltr" }, it.prompt_text)] : []),
+    el("p", { class: "ptext", dir: he ? "rtl" : "ltr" }, local || it.prompt_text),
+    ...(local ? [el("p", { class: "ptext-en", dir: "ltr" }, it.prompt_text)] : []),
     el("div", { class: "media" },
       el("figure", {}, el("img", { src: it.image_url, alt: T().picture }), el("figcaption", {}, T().picture)),
       el("figure", {}, vid)),
@@ -179,5 +207,6 @@ async function load() {
 try { round = parseInt(localStorage.getItem(ROUND_KEY) || "1", 10) || 1; } catch {}
 $("lang-en").addEventListener("click", () => setLang("en"));
 $("lang-he").addEventListener("click", () => setLang("he"));
+$("lang-ru").addEventListener("click", () => setLang("ru"));
 setLang(lang);
 load();

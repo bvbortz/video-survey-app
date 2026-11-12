@@ -83,7 +83,7 @@ async def check_round(rater: str = "", seen: str = ""):
     return {
         "left": sum(c["clip_id"] not in done for c in clips) - len(pick),
         "items": [{"clip_id": c["clip_id"], "prompt_text": c["prompt_text"],
-                   "prompt_text_he": c.get("prompt_text_he"),
+                   "prompt_text_he": c.get("prompt_text_he"), "prompt_text_ru": c.get("prompt_text_ru"),
                    "image_url": _video_url(c["image_file"]), "video_url": _video_url(c["file"])}
                   for c in pick],
     }
