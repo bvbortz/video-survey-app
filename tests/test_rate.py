@@ -118,3 +118,33 @@ def test_rate_only_clips_stay_out_of_check(client, db):
     _run(db.check_clips.insert_many([{**c, "clip_id": "x" + c["clip_id"]} for c in _clips(2, rate_only=False)]))
     r = client.get("/api/check/round", params={"rater": "r1"}).json()
     assert r["items"] and all(x["clip_id"].startswith("x") for x in r["items"])
+
+
+def test_two_tied_best(client, db):
+    it = client.get("/api/rate/round", params={"rater": "r4"}).json()["items"][0]
+    a = _answer(it, rater="r4")
+    a.pop("best")
+    a["best_set"] = a["order"][:2]
+    assert client.post("/api/rate/answer", json=a).status_code == 200
+    d = _run(db.rate_answers.find_one({"rater_id": "r4"}))
+    assert d["best_set"] == sorted(a["order"][:2]) and d["best"] is None
+
+
+@pytest.mark.parametrize("best_set,want", [(["same"], []), ("all", [])])
+def test_same_or_all_picked_is_no_best(client, db, best_set, want):
+    it = client.get("/api/rate/round", params={"rater": "r5"}).json()["items"][0]
+    a = _answer(it, rater="r5")
+    a.pop("best")
+    a["best_set"] = a["order"] if best_set == "all" else best_set
+    assert client.post("/api/rate/answer", json=a).status_code == 200
+    d = _run(db.rate_answers.find_one({"rater_id": "r5"}))
+    assert d["best_set"] == want and d["best"] is None
+
+
+@pytest.mark.parametrize("best_set", [[], ["c99a"], ["same", "x"]])
+def test_bad_best_set_rejected(client, best_set):
+    it = client.get("/api/rate/round", params={"rater": "r6"}).json()["items"][0]
+    a = _answer(it, rater="r6")
+    a.pop("best")
+    a["best_set"] = best_set
+    assert client.post("/api/rate/answer", json=a).status_code == 400

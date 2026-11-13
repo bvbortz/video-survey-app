@@ -11,7 +11,7 @@ const I18N = {
 <li><b>Fail</b> if the video jumps or cuts, or does not start from the picture.</li>
 <li><b>Pass</b> otherwise. Small things still pass: a bit slow, slightly stiff, a small detail off.</li>
 <li><b>Not sure</b> is fine when you really cannot tell.</li>
-<li><b>Best:</b> the one that does the job best: first the action the text asks for, then fewer or smaller problems. <b>All about the same</b> when none is clearly better.</li>
+<li><b>Best:</b> the one that does the job best: first the action the text asks for, then fewer or smaller problems. If two are equally good and better than the third, pick both. <b>All about the same</b> when none is clearly better.</li>
 </ul>
 <p>If the text itself seems strange or impossible for the picture, tick the box, and still answer.</p>
 <p class="hint">Five prompts take about five minutes. Your answers save as you go.</p>`,
@@ -19,7 +19,7 @@ const I18N = {
     textLabel: "Text the videos should follow",
     picture: "Starting picture",
     pass: "Pass", fail: "Fail", unsure: "Not sure",
-    bestQ: "Which video is best?",
+    bestQ: "Which video is best? (two if they tie)",
     same: "All about the same",
     next: "Next",
     replay: "↻ Play all from the start",
@@ -44,7 +44,7 @@ const I18N = {
 <li><b>נכשל</b> אם הסרטון קופץ או נחתך, או לא מתחיל מהתמונה.</li>
 <li><b>עובר</b> בכל מקרה אחר. דברים קטנים עדיין עוברים: קצת איטי, קצת נוקשה, פרט קטן לא מדויק.</li>
 <li><b>לא בטוח/ה</b> זה בסדר כשבאמת אי אפשר לדעת.</li>
-<li><b>הטוב ביותר:</b> זה שעושה את העבודה הכי טוב: קודם כול הפעולה שהטקסט מבקש, ואז פחות בעיות או בעיות קטנות יותר. <b>כולם בערך אותו דבר</b> כשאף אחד לא טוב יותר בבירור.</li>
+<li><b>הטוב ביותר:</b> זה שעושה את העבודה הכי טוב: קודם כול הפעולה שהטקסט מבקש, ואז פחות בעיות או בעיות קטנות יותר. אם שניים טובים באותה מידה וטובים מהשלישי, בחרו את שניהם. <b>כולם בערך אותו דבר</b> כשאף אחד לא טוב יותר בבירור.</li>
 </ul>
 <p>אם הטקסט עצמו נראה מוזר או בלתי אפשרי לתמונה, סמנו את התיבה, ובכל זאת ענו.</p>
 <p class="hint">חמישה פרומפטים לוקחים בערך חמש דקות. התשובות נשמרות תוך כדי.</p>`,
@@ -52,7 +52,7 @@ const I18N = {
     textLabel: "הטקסט שהסרטונים צריכים לבצע",
     picture: "תמונת ההתחלה",
     pass: "עובר", fail: "נכשל", unsure: "לא בטוח/ה",
-    bestQ: "איזה סרטון הכי טוב?",
+    bestQ: "איזה סרטון הכי טוב? (שניים אם הם שווים)",
     same: "כולם בערך אותו דבר",
     next: "הבא",
     replay: "↻ הפעלת כולם מההתחלה",
@@ -77,7 +77,7 @@ const I18N = {
 <li><b>Брак</b>, если видео прыгает или обрывается, или начинается не с картинки.</li>
 <li><b>Годится</b> во всех остальных случаях. Мелочи не мешают: немного медленно, чуть скованно, небольшая деталь не та.</li>
 <li><b>Не уверен(а)</b> можно выбрать, когда действительно не понять.</li>
-<li><b>Лучшее:</b> то, которое лучше всего справилось: сначала действие, о котором просит текст, затем меньше проблем или они мельче. <b>Все примерно одинаковы</b> — когда ни одно не лучше явно.</li>
+<li><b>Лучшее:</b> то, которое лучше всего справилось: сначала действие, о котором просит текст, затем меньше проблем или они мельче. Если два одинаково хороши и лучше третьего, выберите оба. <b>Все примерно одинаковы</b> — когда ни одно не лучше явно.</li>
 </ul>
 <p>Если сам текст кажется странным или невозможным для этой картинки, поставьте галочку и всё равно ответьте.</p>
 <p class="hint">Пять промптов занимают около пяти минут. Ответы сохраняются по ходу.</p>`,
@@ -85,7 +85,7 @@ const I18N = {
     textLabel: "Текст, которому должны следовать видео",
     picture: "Начальная картинка",
     pass: "Годится", fail: "Брак", unsure: "Не уверен(а)",
-    bestQ: "Какое видео лучшее?",
+    bestQ: "Какое видео лучшее? (два, если они равны)",
     same: "Все примерно одинаковы",
     next: "Дальше",
     replay: "↻ Запустить все сначала",
@@ -108,7 +108,7 @@ let lang = "en";
 try { const s = localStorage.getItem(LANG_KEY); if (s && I18N[s]) lang = s; } catch {}
 if (I18N[QS.get("lang")]) lang = QS.get("lang");
 let items = [], pos = 0, shownAt = 0, left = 0, round = 1;
-const answers = {};   // prompt_key -> {verdicts, best, note, flag}: kept while going back within a round
+const answers = {};   // prompt_key -> {verdicts, best: [clip ids] or ["same"], note, flag}: kept while going back
 const $ = (id) => document.getElementById(id);
 const T = () => I18N[lang];
 
@@ -166,14 +166,14 @@ function show() {
   main.replaceChildren();
   if (pos >= items.length) return finished();
   const it = items[pos];
-  const a = answers[it.prompt_key] || (answers[it.prompt_key] = { verdicts: {}, best: null, note: "", flag: false });
+  const a = answers[it.prompt_key] || (answers[it.prompt_key] = { verdicts: {}, best: [], note: "", flag: false });
   const local = (lang === "he" && it.prompt_text_he) || (lang === "ru" && it.prompt_text_ru) || null;
   const he = lang === "he" && !!local;
   const vids = it.clips.map((c) => video(c.url));
   const played = it.clips.map(() => !!a.played);
   const next = el("button", { type: "button", class: "primary next" }, T().next);
   const ready = () => (played.every(Boolean) || a.timedOut) &&
-    it.clips.every((c) => a.verdicts[c.clip_id]) && a.best !== null;
+    it.clips.every((c) => a.verdicts[c.clip_id]) && a.best.length > 0;
   const refresh = () => { next.disabled = !ready(); };
   vids.forEach((v, i) => v.addEventListener("timeupdate", () => {
     if (!played[i] && v.duration && v.currentTime > v.duration - 0.35) { played[i] = true; a.played = played.every(Boolean); refresh(); }
@@ -194,10 +194,16 @@ function show() {
   };
   const bestOpts = [...it.clips.map((c, i) => [c.clip_id, LETTERS[i]]), ["same", T().same]];
   const bestBtns = bestOpts.map(([v, label]) => {
-    const b = el("button", { type: "button", "aria-pressed": String(a.best === v) }, label);
+    const b = el("button", { type: "button", "aria-pressed": String(a.best.includes(v)) }, label);
     b.addEventListener("click", () => {
-      a.best = v;
-      bestBtns.forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+      // a clip toggles (one, or two that tie); "same" stands alone; every clip picked means the same
+      if (v === "same") a.best = ["same"];
+      else {
+        const s = a.best.filter((x) => x !== "same");
+        a.best = s.includes(v) ? s.filter((x) => x !== v) : [...s, v];
+        if (a.best.length === it.clips.length) a.best = ["same"];
+      }
+      bestBtns.forEach((x, i) => x.setAttribute("aria-pressed", String(a.best.includes(bestOpts[i][0]))));
       refresh();
     });
     return b;
@@ -239,7 +245,7 @@ function show() {
 
 function answer(it, a) {
   const body = { prompt_key: it.prompt_key, order: it.clips.map((c) => c.clip_id), verdicts: a.verdicts,
-                 best: a.best, note: a.note.trim(), prompt_flag: a.flag,
+                 best_set: a.best, note: a.note.trim(), prompt_flag: a.flag,
                  elapsed_ms: Date.now() - shownAt, round, lang, rater_id: raterId() };
   const send = (n) => fetch("/api/rate/answer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
     .then((r) => { if (!r.ok && r.status >= 500 && n > 0) throw new Error(r.status); })

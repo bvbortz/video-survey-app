@@ -1,5 +1,6 @@
 """Rate the Clips — one prompt at a time: its clips side by side, pass / fail / not sure for each,
-then the best of them (or all about the same).
+then the best of them: one clip, two that tie (2026-11-13; before that a single clip), or all
+about the same.
 
 One screen gives both kinds of label on the same clips: a pass/fail verdict per clip, and the
 order inside the prompt (the best pick, plus the pass/fail split). The clips, pictures and Blob
@@ -92,7 +93,8 @@ class AnswerIn(BaseModel):
     prompt_key: str = Field(max_length=64)
     order: list[str] = Field(max_length=8)           # clip ids as shown, left to right
     verdicts: dict[str, str]                          # clip id -> pass / fail / unsure
-    best: str = Field(max_length=64)                  # a clip id, or "same"
+    best: str | None = Field(default=None, max_length=64)   # pages before 2026-11-13: a clip id, or "same"
+    best_set: list[str] | None = Field(default=None, max_length=8)   # clip ids (one, or tied), or ["same"]
     note: str = Field(default="", max_length=1000)
     prompt_flag: bool = False                         # the rater finds the text itself strange or impossible
     elapsed_ms: int = Field(ge=0)
@@ -121,10 +123,15 @@ async def rate_answer(body: AnswerIn, background: BackgroundTasks):
         raise HTTPException(400, "unknown prompt or clips")
     if set(body.verdicts) != set(p["clips"]) or not all(v in VERDICTS for v in body.verdicts.values()):
         raise HTTPException(400, "a pass / fail / not sure answer is needed for every clip")
-    if body.best != SAME and body.best not in p["clips"]:
-        raise HTTPException(400, "best must be one of the clips or 'same'")
+    raw = body.best_set if body.best_set is not None else ([body.best] if body.best else [])
+    picked = [] if raw == [SAME] else raw
+    if not raw or len(set(picked)) != len(picked) or not set(picked) <= set(p["clips"]):
+        raise HTTPException(400, "best must be clips of this prompt, or 'same'")
+    if len(picked) == len(p["clips"]):   # every clip picked: all about the same
+        picked = []
+    # best_set: the clips picked as best ([] = all about the same); best: the one clip when only one was
     doc = {"rater_id": body.rater_id or None, "prompt_key": body.prompt_key, "order": body.order,
-           "verdicts": body.verdicts, "best": None if body.best == SAME else body.best,
+           "verdicts": body.verdicts, "best_set": sorted(picked), "best": picked[0] if len(picked) == 1 else None,
            "note": body.note.strip(), "prompt_flag": body.prompt_flag, "elapsed_ms": body.elapsed_ms,
            "round": body.round, "lang": body.lang, "created_at": datetime.now(timezone.utc)}
     background.add_task(_persist, db, doc)
