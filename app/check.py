@@ -73,7 +73,8 @@ async def check_round(rater: str = "", seen: str = ""):
     done = {s for s in seen.split(",") if s}
     if rater_id:
         done |= set(await db.check_answers.distinct("clip_id", {"rater_id": rater_id}))
-    clips = [c async for c in db.check_clips.find(ACTIVE, {"_id": 0})]
+    # rate_only clips (app/rate.py's prompt groups) are not served one at a time here
+    clips = [c async for c in db.check_clips.find({**ACTIVE, "rate_only": {"$ne": True}}, {"_id": 0})]
     if not clips:
         raise HTTPException(503, "no check clips loaded")
     counts = {}
@@ -83,7 +84,7 @@ async def check_round(rater: str = "", seen: str = ""):
     return {
         "left": sum(c["clip_id"] not in done for c in clips) - len(pick),
         "items": [{"clip_id": c["clip_id"], "prompt_text": c["prompt_text"],
-                   "prompt_text_he": c.get("prompt_text_he"),
+                   "prompt_text_he": c.get("prompt_text_he"), "prompt_text_ru": c.get("prompt_text_ru"),
                    "image_url": _video_url(c["image_file"]), "video_url": _video_url(c["file"])}
                   for c in pick],
     }
