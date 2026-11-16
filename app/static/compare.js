@@ -1,4 +1,8 @@
 // Which Clip Is Better (app/compare.py): two clips of one prompt, pick the better one.
+// The final survey (app/final.py, static/final.html) is the same page on its own API:
+// <body data-api="/api/final" data-key="final" data-n="8">.
+const CFG = { api: document.body.dataset.api || "/api/compare", key: document.body.dataset.key || "compare",
+              n: parseInt(document.body.dataset.n || "10", 10) };
 const I18N = {
   en: {
     title: "Which Clip Is Better",
@@ -11,7 +15,8 @@ const I18N = {
 <li><b>About the same</b> when neither is clearly better: both good, both bad in a similar way, or you really cannot tell.</li>
 </ul>
 <p>If the text itself seems strange or impossible for the picture, tick the box under the buttons, and still choose.</p>
-<p class="hint">Ten pairs take about five minutes. Your answers save as you go.</p>`,
+`,
+    hint: (n) => `${n} pairs take about ${Math.max(2, Math.round(n / 2))} minutes. Your answers save as you go.`,
     loading: "Loading the clips…",
     textLabel: "Text the videos should follow",
     picture: "Starting picture",
@@ -23,9 +28,9 @@ const I18N = {
     back: "← Previous pair",
     counter: (i, n) => `${i} / ${n}`,
     done: "Done. Thank you.",
-    more: (n) => `There are ${n} more pairs you have not seen. Another round gives you ten different ones.`,
+    more: (n) => `There are ${n} more pairs you have not seen. Another round gives you ${CFG.n} different ones.`,
     allDone: "You have compared every pair. Thank you.",
-    again: "Another round of 10",
+    again: `Another round of ${CFG.n}`,
     error: "Could not load the clips. Check your connection and reload the page.",
   },
   he: {
@@ -39,7 +44,8 @@ const I18N = {
 <li><b>בערך אותו דבר</b> כשאף אחד מהם לא טוב יותר בבירור: שניהם טובים, שניהם גרועים באופן דומה, או שבאמת אי אפשר לדעת.</li>
 </ul>
 <p>אם הטקסט עצמו נראה מוזר או בלתי אפשרי לתמונה, סמנו את התיבה מתחת לכפתורים, ובכל זאת בחרו.</p>
-<p class="hint">עשרה זוגות לוקחים בערך חמש דקות. התשובות נשמרות תוך כדי.</p>`,
+`,
+    hint: (n) => `${n} זוגות לוקחים בערך ${Math.max(2, Math.round(n / 2))} דקות. התשובות נשמרות תוך כדי.`,
     loading: "טוען את הסרטונים…",
     textLabel: "הטקסט שהסרטונים צריכים לבצע",
     picture: "תמונת ההתחלה",
@@ -51,9 +57,9 @@ const I18N = {
     back: "→ הזוג הקודם",
     counter: (i, n) => `${i} / ${n}`,
     done: "סיימתם. תודה!",
-    more: (n) => `יש עוד ${n} זוגות שלא ראיתם. סבב נוסף ייתן לכם עשרה אחרים.`,
+    more: (n) => `יש עוד ${n} זוגות שלא ראיתם. סבב נוסף ייתן לכם ${CFG.n} אחרים.`,
     allDone: "השוויתם את כל הזוגות. תודה!",
-    again: "סבב נוסף של 10",
+    again: `סבב נוסף של ${CFG.n}`,
     error: "לא ניתן לטעון את הסרטונים. בדקו את החיבור וטענו את הדף מחדש.",
   },
   ru: {
@@ -67,7 +73,8 @@ const I18N = {
 <li><b>Примерно одинаково</b> — когда ни одно не лучше явно: оба хорошие, оба плохие похожим образом, или действительно нельзя сказать.</li>
 </ul>
 <p>Если сам текст кажется странным или невозможным для этой картинки, поставьте галочку под кнопками и всё равно выберите.</p>
-<p class="hint">Десять пар занимают около пяти минут. Ответы сохраняются по ходу.</p>`,
+`,
+    hint: (n) => `${n} пар — это около ${Math.max(2, Math.round(n / 2))} минут. Ответы сохраняются по ходу.`,
     loading: "Загружаем видео…",
     textLabel: "Текст, которому должны следовать видео",
     picture: "Начальная картинка",
@@ -79,14 +86,14 @@ const I18N = {
     back: "← Предыдущая пара",
     counter: (i, n) => `${i} / ${n}`,
     done: "Готово. Спасибо!",
-    more: (n) => `Осталось ещё ${n} пар, которые вы не видели. Следующий раунд даст десять других.`,
+    more: (n) => `Осталось ещё ${n} пар, которые вы не видели. Следующий раунд даст ${CFG.n} других.`,
     allDone: "Вы сравнили все пары. Спасибо!",
-    again: "Ещё раунд из 10",
+    again: `Ещё раунд из ${CFG.n}`,
     error: "Не удалось загрузить видео. Проверьте соединение и обновите страницу.",
   },
 };
 const QS = new URLSearchParams(location.search);
-const LANG_KEY = "survey_lang", RATER_KEY = "survey_rater_id", SEEN_KEY = "compare_seen", ROUND_KEY = "compare_round";
+const LANG_KEY = "survey_lang", RATER_KEY = "survey_rater_id", SEEN_KEY = `${CFG.key}_seen`, ROUND_KEY = `${CFG.key}_round`;
 let lang = "en";
 try { const s = localStorage.getItem(LANG_KEY); if (s && I18N[s]) lang = s; } catch {}
 if (I18N[QS.get("lang")]) lang = QS.get("lang");
@@ -127,7 +134,7 @@ function setLang(l) {
   $("lang-ru").classList.toggle("active", l === "ru");
   $("title").textContent = T().title;
   $("rules-title").textContent = T().rulesTitle;
-  $("rules-body").innerHTML = T().rules;
+  $("rules-body").innerHTML = T().rules + `<p class="hint">${T().hint(CFG.n)}</p>`;
   if (refetch) load(); else if (items.length) show(); else $("msg").textContent = T().loading;
 }
 
@@ -192,8 +199,8 @@ function show() {
 
 function answer(it, choice, note, promptFlag) {
   const body = { pair_id: it.pair_id, first: it.first, second: it.second, choice, note, prompt_flag: promptFlag,
-                 elapsed_ms: Date.now() - shownAt, round, lang, rater_id: raterId() };
-  const send = (n) => fetch("/api/compare/answer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+                 elapsed_ms: Date.now() - shownAt, round, lang, rater_id: raterId(), src: QS.get("src") || "" };
+  const send = (n) => fetch(`${CFG.api}/answer`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
     .then((r) => { if (!r.ok && r.status >= 500 && n > 0) throw new Error(r.status); })
     .catch(() => n > 0 && setTimeout(() => send(n - 1), 2000));
   send(3);
@@ -219,7 +226,7 @@ async function load() {
   $("main").replaceChildren(el("p", { class: "hint", id: "msg" }, T().loading));
   try {
     const q = new URLSearchParams({ rater: raterId() || "", seen: [...seen()].join(","), lang });
-    const r = await fetch(`/api/compare/round?${q}`);
+    const r = await fetch(`${CFG.api}/round?${q}`);
     if (!r.ok) throw new Error(r.status);
     const d = await r.json();
     items = d.items; left = d.left;

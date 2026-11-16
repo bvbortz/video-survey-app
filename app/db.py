@@ -48,3 +48,8 @@ async def ensure_indexes(db) -> None:
     await db.rate_prompts.create_index("prompt_key", unique=True)
     await db.rate_answers.create_index("prompt_key")
     await db.rate_answers.create_index("rater_id")
+    # the final survey (app/final.py)
+    await db.final_clips.create_index("clip_id", unique=True)
+    await db.final_pairs.create_index("pair_id", unique=True)
+    await db.final_answers.create_index("pair_id")
+    await db.final_answers.create_index("rater_id")

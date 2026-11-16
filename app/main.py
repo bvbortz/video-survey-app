@@ -12,6 +12,7 @@ Endpoints:
   GET  /admin/export            cookie-gated full response dump (JSON)
   GET  /check, /api/check/*     Ten Clip Check, a separate pass/fail study (app/check.py)
   GET  /compare, /api/compare/* Which Clip Is Better, its side-by-side pairs (app/compare.py)
+  GET  /final, /api/final/*     the final survey: extender vs zero-shot Qwen, test prompts (app/final.py)
   GET  /rate, /api/rate/*       Rate the Clips: one prompt's clips, pass/fail each and the best (app/rate.py)
   GET  /                        static one-page frontend
 """
@@ -33,6 +34,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from . import db as dbmod
 from .check import router as check_router
 from .compare import router as compare_router
+from .final import router as final_router
 from .rate import router as rate_router
 from .assignment import ACTIVE, build_session_items, pair_token
 
@@ -85,6 +87,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="video-survey-app", lifespan=lifespan)
 app.include_router(check_router)
 app.include_router(compare_router)
+app.include_router(final_router)
 app.include_router(rate_router)
 
 
