@@ -20,6 +20,7 @@ const I18N = {
     loading: "Loading the clips…",
     textLabel: "Text the videos should follow",
     picture: "Starting picture",
+    zoom: "Tap to enlarge", close: "Close",
     first: "A is better", same: "About the same", second: "B is better",
     replay: "↻ Play both from the start",
     unlock: "The buttons unlock once both clips have played through.",
@@ -49,6 +50,7 @@ const I18N = {
     loading: "טוען את הסרטונים…",
     textLabel: "הטקסט שהסרטונים צריכים לבצע",
     picture: "תמונת ההתחלה",
+    zoom: "הקשה להגדלה", close: "סגירה",
     first: "A טוב יותר", same: "בערך אותו דבר", second: "B טוב יותר",
     replay: "↻ הפעלת שניהם מההתחלה",
     unlock: "הכפתורים נפתחים אחרי ששני הסרטונים הוצגו עד הסוף.",
@@ -78,6 +80,7 @@ const I18N = {
     loading: "Загружаем видео…",
     textLabel: "Текст, которому должны следовать видео",
     picture: "Начальная картинка",
+    zoom: "Нажмите, чтобы увеличить", close: "Закрыть",
     first: "A лучше", same: "Примерно одинаково", second: "B лучше",
     replay: "↻ Запустить оба сначала",
     unlock: "Кнопки откроются, когда оба видео проиграются до конца.",
@@ -121,6 +124,28 @@ function el(tag, attrs = {}, ...kids) {
   for (const [k, v] of Object.entries(attrs)) k === "class" ? (e.className = v) : e.setAttribute(k, v);
   for (const k of kids) e.append(k);
   return e;
+}
+
+// The starting picture full screen: tap the thumbnail; tap anywhere, the close button or Esc closes.
+const ZOOM_CSS = `.zoomable { padding: 0; border: 0; background: none; cursor: zoom-in; display: block; }
+.zoom-ov { position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,.95); display: flex;
+  align-items: center; justify-content: center; padding: 16px; cursor: zoom-out; }
+.zoom-ov img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px; }
+.zoom-ov button { position: absolute; top: 12px; inset-inline-end: 12px; font-size: 1.4rem; line-height: 1;
+  width: 44px; height: 44px; border-radius: 22px; border: 0; background: rgba(255,255,255,.9); color: #111; cursor: pointer; }`;
+function zoomCss() {
+  if (!document.getElementById("zoom-css")) document.head.append(el("style", { id: "zoom-css" }, ZOOM_CSS));
+}
+function zoom(src, alt) {
+  const close = el("button", { type: "button", "aria-label": T().close }, "✕");
+  const ov = el("div", { class: "zoom-ov", role: "dialog", "aria-modal": "true", "aria-label": alt },
+                el("img", { src, alt }), close);
+  const shut = () => { ov.remove(); document.removeEventListener("keydown", onKey); };
+  const onKey = (e) => { if (e.key === "Escape") shut(); };
+  ov.addEventListener("click", shut);
+  document.addEventListener("keydown", onKey);
+  document.body.append(ov);
+  close.focus();
 }
 
 function setLang(l) {
@@ -174,9 +199,13 @@ function show() {
   setTimeout(unlock, 25000);   // a stalled video must not trap the rater
   const replay = el("button", { type: "button", class: "replay" }, T().replay);
   replay.addEventListener("click", () => vids.forEach((v) => { v.currentTime = 0; v.play().catch(() => {}); }));
+  const thumb = el("button", { type: "button", class: "zoomable", title: T().zoom },
+                   el("img", { src: it.image_url, alt: T().picture }));
+  thumb.addEventListener("click", () => zoom(it.image_url, T().picture));
+  zoomCss();
   main.append(
     el("div", { class: "prompt" },
-      el("figure", {}, el("img", { src: it.image_url, alt: T().picture }), el("figcaption", {}, T().picture)),
+      el("figure", {}, thumb, el("figcaption", {}, T().picture, el("br"), "🔍 ", T().zoom)),
       el("div", {},
         el("p", { class: "label" }, T().textLabel),
         el("p", { class: "ptext", dir: he ? "rtl" : "ltr" }, local || it.prompt_text),
