@@ -30,16 +30,13 @@ def get_db():
 
 
 async def ensure_indexes(db) -> None:
-    await db.pairs.create_index("pair_id", unique=True)
-    await db.pairs.create_index("is_attention_check")
-    await db.pairs.create_index("arm")
-    await db.clips.create_index("clip_id", unique=True)
-    await db.responses.create_index("pair_id")
-    await db.responses.create_index("session_id")
-    await db.sessions.create_index("session_id", unique=True)
-    # `active` filters every pair selection; shortlist backs the admin gallery.
-    await db.pairs.create_index("active")
-    await db.shortlist.create_index("pair_id", unique=True)
+    # the survey at / (app/survey.py)
+    await db.study_clips.create_index("clip_id", unique=True)
+    await db.study_pairs.create_index("pair_id", unique=True)
+    await db.study_pairs.create_index("study")
+    await db.study_answers.create_index("pair_id")
+    await db.study_answers.create_index("rater_id")
+    await db.study_answers.create_index("study")
     # Ten Clip Check (app/check.py)
     await db.check_clips.create_index("clip_id", unique=True)
     await db.check_answers.create_index("clip_id")
@@ -48,8 +45,3 @@ async def ensure_indexes(db) -> None:
     await db.rate_prompts.create_index("prompt_key", unique=True)
     await db.rate_answers.create_index("prompt_key")
     await db.rate_answers.create_index("rater_id")
-    # the final survey (app/final.py)
-    await db.final_clips.create_index("clip_id", unique=True)
-    await db.final_pairs.create_index("pair_id", unique=True)
-    await db.final_answers.create_index("pair_id")
-    await db.final_answers.create_index("rater_id")

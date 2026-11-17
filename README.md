@@ -1,28 +1,31 @@
 # video-survey-app
 
-Tiny FastAPI app for a **human-preference (MOS) study** on AI-generated video quality.
-A rater sees a pair of videos (same prompt, two conditions) and grades **each** on
-five 0–10 categories mirroring the automatic evaluator. Companion design docs live in
-the main repo under `user-survey/` (`PLAN.md`, `AZURE_DEPLOY_GUIDE.md`).
+Tiny FastAPI app for human judgements of AI-generated video. The survey at `/` runs one
+**study** at a time: two clips of the same prompt side by side, the rater picks the better
+one (or about the same), 8 pairs a round, English / Hebrew / Russian. Each study is loaded
+under its own id; loading one retires the previous study's pairs, and every answer carries
+its study, so studies never mix. `/check`, `/compare` and `/rate` are the judge-test pages.
 
 ## Layout
 ```
 app/
-  main.py        FastAPI: /api/session, /api/response, /admin, static
-  assignment.py  least-judged-first pair selection + A/B randomisation
-  db.py          Mongo (motor) handle
-  static/        one-page frontend (index.html, app.js, style.css)
+  main.py        FastAPI app, health, admin cookie check, static mount
+  survey.py      the study at /: /api/round, /api/answer, /admin, /admin/export
+  check.py, compare.py, rate.py   the judge-test pages
+  db.py          Mongo (motor) handle and indexes
+  static/        index.html (the study) and the other pages; compare.js drives both side-by-side pages
 scripts/
-  load_pairs.py  import pairs.json (from export_survey_pairs.py) into Mongo
+  load_study.py  import a study manifest (finetune-data-gen/ext_survey.py export) into Mongo
 Dockerfile
 ```
 
 ## Data flow
-1. `finetune-data-gen/export_survey_pairs.py` → `pairs.json` + `survey_videos/`.
-2. Videos → Azure Blob (see deploy guide). `pairs.json` → Mongo via `load_pairs.py`.
-3. App serves sessions; each `/api/session` hands out the least-judged pairs, hides
-   leg identity, randomises A/B. `/api/response` stores the 2×5 scores resolved back
-   to the true leg.
+1. `finetune-data-gen/ext_survey.py export` -> `user-survey/study_manifest.json` + `user-survey/study_videos/`.
+2. `user-survey/run_study_upload.sh` puts the clips on Azure Blob under `study/`;
+   `scripts/load_study.py` loads the manifest into Mongo (`study_clips`, `study_pairs`).
+3. `/api/round` hands each rater the core pairs first, then the least-answered, hides which
+   clip is which leg and randomises sides; `/api/answer` stores the choice resolved to the leg
+   (`study_answers`).
 
 ## Local dev
 ```bash
@@ -31,7 +34,7 @@ pip install -r requirements.txt
 export MONGO_URI='mongodb+srv://...'          # Atlas M0 or local mongod
 export VIDEO_BASE_URL='https://acct.blob.core.windows.net/videos'
 export ADMIN_SECRET='some-long-secret'
-python scripts/load_pairs.py ../user-survey/pairs.json
+python scripts/load_study.py ../user-survey/study_manifest.json
 uvicorn app.main:app --reload
 # open http://localhost:8000
 ```
@@ -41,7 +44,7 @@ Cookie-gated (no login form). In the browser console:
 ```js
 document.cookie = "admin_token=<ADMIN_SECRET>;path=/";
 ```
-then open `/admin` (coverage/counts) or `/admin/export` (full JSON dump).
+then open `/admin` (answers per study) or `/admin/export?study=<id>` (that study's answers as JSON).
 
 ## Tests
 ```bash

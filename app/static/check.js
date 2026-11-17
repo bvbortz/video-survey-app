@@ -88,7 +88,7 @@ let items = [], pos = 0, shownAt = 0, left = 0, round = 1;
 const $ = (id) => document.getElementById(id);
 const T = () => I18N[lang];
 
-function raterId() {   // the survey's own per-browser id (app.js), so one person is one id
+function raterId() {   // one per-browser id shared by every page (survey_rater_id), so one person is one id
   try {
     let id = localStorage.getItem(RATER_KEY);
     if (!id) {
