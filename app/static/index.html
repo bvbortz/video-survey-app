@@ -27,6 +27,12 @@
     .pair figcaption { font-weight: 700; font-size: 1.1rem; margin-bottom: 4px; }
     video { width: 100%; border-radius: 8px; background: #000; display: block; }
     .replay { background: none; border: 0; color: var(--accent); cursor: pointer; padding: 0; margin: 8px 0 0; font: inherit; }
+    .seg { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-top: 8px; }
+    .seg button { font: inherit; font-weight: 700; padding: 10px 4px; border-radius: 10px; cursor: pointer;
+      border: 2px solid var(--border); background: var(--card); color: var(--fg); }
+    .seg button[aria-pressed="true"][data-v="pass"] { background: #237a46; border-color: #237a46; color: #fff; }
+    .seg button[aria-pressed="true"][data-v="fail"] { background: #b3362c; border-color: #b3362c; color: #fff; }
+    .seg button[aria-pressed="true"][data-v="unsure"] { background: #946200; border-color: #946200; color: #fff; }
     .verdicts { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: 14px 0 8px; }
     .verdicts button { font: inherit; font-weight: 700; padding: 14px 6px; border-radius: 10px; cursor: pointer;
       border: 2px solid var(--border); background: var(--card); color: var(--fg); }
@@ -42,7 +48,7 @@
     @media (max-width: 600px) { .pair { grid-template-columns: 1fr; } }
   </style>
 </head>
-<body data-api="/api" data-key="study" data-n="8">
+<body data-api="/api" data-key="study" data-n="8" data-pf="1">
   <main id="app">
     <div class="langbar" role="group" aria-label="Language / שפה / Язык">
       <button id="lang-en" class="lang-btn" type="button">English</button>

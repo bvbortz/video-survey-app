@@ -13,7 +13,10 @@ compared), fewest answers first; then the other pairs, fewest answers first, tie
 Nothing about the clips' content or any judge score decides what is served.
 
 An answer stores its study, better_leg ("base" | "ext" | None for about the same) and src,
-the ?src= tag of the link the rater came in by.
+the ?src= tag of the link the rater came in by. Since 2026-11-18 (rater 1: an added question,
+the study continues) the page also asks pass / fail / not sure for each clip before the choice;
+the answer stores them by leg (verdict_leg = {"base": ..., "ext": ...}). Answers from before
+carry no verdicts.
 
 Endpoints:
   GET  /api/round       N_ROUND pairs for this rater
@@ -29,7 +32,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import JSONResponse
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from . import db as dbmod
 from .compare import AnswerIn
@@ -97,8 +100,20 @@ async def study_round(rater: str = "", seen: str = "", lang: str = "en"):
     return {"left": sum(p["pair_id"] not in done for p in pairs) - len(pick), "items": items}
 
 
+VERDICTS = {"pass", "fail", "unsure"}
+
+
 class StudyAnswerIn(AnswerIn):
     src: str = Field(default="", max_length=32)
+    verdict_first: str | None = None    # pass / fail / unsure for the first clip; None = not asked
+    verdict_second: str | None = None
+
+    @field_validator("verdict_first", "verdict_second")
+    @classmethod
+    def known_verdict(cls, v: str | None) -> str | None:
+        if v is not None and v not in VERDICTS:
+            raise ValueError("verdict must be pass, fail or unsure")
+        return v
 
 
 async def _persist(db, doc: dict) -> None:
@@ -126,6 +141,9 @@ async def study_answer(body: StudyAnswerIn, background: BackgroundTasks):
            "note": body.note.strip(), "prompt_flag": body.prompt_flag, "elapsed_ms": body.elapsed_ms,
            "round": body.round, "lang": body.lang, "src": body.src.strip(),
            "created_at": datetime.now(timezone.utc)}
+    if body.verdict_first or body.verdict_second:
+        doc["verdicts"] = {body.first: body.verdict_first, body.second: body.verdict_second}
+        doc["verdict_leg"] = {p["legs"][body.first]: body.verdict_first, p["legs"][body.second]: body.verdict_second}
     background.add_task(_persist, db, doc)
     return {"ok": True}
 

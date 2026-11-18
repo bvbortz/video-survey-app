@@ -2,6 +2,7 @@
 // The survey at / (app/survey.py, static/index.html) is the same page on its own API:
 // <body data-api="/api" data-key="study" data-n="8">.
 const CFG = { api: document.body.dataset.api || "/api/compare", key: document.body.dataset.key || "compare",
+              pf: document.body.dataset.pf === "1",   // / only: pass / fail / not sure per clip before the choice
               n: parseInt(document.body.dataset.n || "10", 10) };
 const I18N = {
   en: {
@@ -22,6 +23,15 @@ const I18N = {
     picture: "Starting picture",
     zoom: "Tap to enlarge", close: "Close",
     first: "A is better", same: "About the same", second: "B is better",
+    pass: "Pass", fail: "Fail", unsure: "Not sure",
+    rulesPf: `<p>Before choosing, mark each video <b>Pass</b>, <b>Fail</b> or <b>Not sure</b>:</p>
+<ul>
+<li><b>Fail</b> if the thing the text asks for does not happen, happens backwards, or is done by the wrong person or object; if something melts, morphs, merges, or appears or vanishes out of nowhere; or if the video jumps or cuts, or does not start from the picture.</li>
+<li><b>Pass</b> otherwise. Small things still pass: a bit slow, slightly stiff, a small detail off.</li>
+<li><b>Not sure</b> when you really cannot tell.</li>
+</ul>
+`,
+    unlockPf: "Mark both videos, then choose. The buttons unlock once both clips have played through.",
     replay: "↻ Play both from the start",
     unlock: "The buttons unlock once both clips have played through.",
     note: "Why? (optional)",
@@ -52,6 +62,15 @@ const I18N = {
     picture: "תמונת ההתחלה",
     zoom: "הקשה להגדלה", close: "סגירה",
     first: "A טוב יותר", same: "בערך אותו דבר", second: "B טוב יותר",
+    pass: "עובר", fail: "נכשל", unsure: "לא בטוח/ה",
+    rulesPf: `<p>לפני הבחירה, סמנו כל סרטון <b>עובר</b>, <b>נכשל</b> או <b>לא בטוח/ה</b>:</p>
+<ul>
+<li><b>נכשל</b> אם מה שהטקסט מבקש לא קורה, קורה הפוך, או נעשה על ידי האדם או החפץ הלא נכונים; אם משהו נמס, משנה צורה, מתמזג, או מופיע או נעלם משום מקום; או אם הסרטון קופץ או נחתך, או לא מתחיל מהתמונה.</li>
+<li><b>עובר</b> בכל מקרה אחר. דברים קטנים עדיין עוברים: קצת איטי, קצת נוקשה, פרט קטן לא מדויק.</li>
+<li><b>לא בטוח/ה</b> כשבאמת אי אפשר לדעת.</li>
+</ul>
+`,
+    unlockPf: "סמנו את שני הסרטונים, ואז בחרו. הכפתורים נפתחים אחרי ששני הסרטונים הוצגו עד הסוף.",
     replay: "↻ הפעלת שניהם מההתחלה",
     unlock: "הכפתורים נפתחים אחרי ששני הסרטונים הוצגו עד הסוף.",
     note: "למה? (לא חובה)",
@@ -82,6 +101,15 @@ const I18N = {
     picture: "Начальная картинка",
     zoom: "Нажмите, чтобы увеличить", close: "Закрыть",
     first: "A лучше", same: "Примерно одинаково", second: "B лучше",
+    pass: "Годится", fail: "Брак", unsure: "Не уверен(а)",
+    rulesPf: `<p>Перед выбором отметьте каждое видео: <b>Годится</b>, <b>Брак</b> или <b>Не уверен(а)</b>:</p>
+<ul>
+<li><b>Брак</b>, если то, что просит текст, не происходит, происходит наоборот или это делает не тот человек или предмет; если что-то плавится, меняет форму, сливается, или появляется либо исчезает из ниоткуда; или если видео прыгает или обрывается, или начинается не с картинки.</li>
+<li><b>Годится</b> во всех остальных случаях. Мелочи не мешают: немного медленно, чуть скованно, небольшая деталь не та.</li>
+<li><b>Не уверен(а)</b> — когда действительно не понять.</li>
+</ul>
+`,
+    unlockPf: "Оцените оба видео, затем выберите. Кнопки откроются, когда оба видео проиграются до конца.",
     replay: "↻ Запустить оба сначала",
     unlock: "Кнопки откроются, когда оба видео проиграются до конца.",
     note: "Почему? (необязательно)",
@@ -159,7 +187,7 @@ function setLang(l) {
   $("lang-ru").classList.toggle("active", l === "ru");
   $("title").textContent = T().title;
   $("rules-title").textContent = T().rulesTitle;
-  $("rules-body").innerHTML = T().rules + `<p class="hint">${T().hint(CFG.n)}</p>`;
+  $("rules-body").innerHTML = T().rules + (CFG.pf ? T().rulesPf : "") + `<p class="hint">${T().hint(CFG.n)}</p>`;
   if (refetch) load(); else if (items.length) show(); else $("msg").textContent = T().loading;
 }
 
@@ -185,13 +213,28 @@ function show() {
   const vids = [video(it.first_url), video(it.second_url)];
   const note = el("textarea", { id: "note", rows: "2", placeholder: T().note });
   const flag = el("input", { type: "checkbox", id: "flag" });
+  const verdicts = { first: null, second: null };   // CFG.pf only
   const btns = ["first", "same", "second"].map((v) => {
     const b = el("button", { type: "button", "data-v": v }, T()[v]);
     b.disabled = true;
-    b.addEventListener("click", () => answer(it, v, note.value.trim(), flag.checked));
+    b.addEventListener("click", () => answer(it, v, note.value.trim(), flag.checked, verdicts));
     return b;
   });
-  const unlock = () => btns.forEach((b) => (b.disabled = false));
+  let unlocked = false;
+  const refresh = () => btns.forEach((b) => (b.disabled = !(unlocked && (!CFG.pf || (verdicts.first && verdicts.second)))));
+  const unlock = () => { unlocked = true; refresh(); };
+  const seg = (side) => {
+    const sb = ["pass", "fail", "unsure"].map((v) => {
+      const b = el("button", { type: "button", "data-v": v, "aria-pressed": "false" }, T()[v]);
+      b.addEventListener("click", () => {
+        verdicts[side] = v;
+        sb.forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+        refresh();
+      });
+      return b;
+    });
+    return el("div", { class: "seg", role: "group", "aria-label": side === "first" ? "A" : "B" }, ...sb);
+  };
   const played = [false, false];
   vids.forEach((v, i) => v.addEventListener("timeupdate", () => {
     if (!played[i] && v.duration && v.currentTime > v.duration - 0.35) { played[i] = true; if (played[0] && played[1]) unlock(); }
@@ -211,11 +254,11 @@ function show() {
         el("p", { class: "ptext", dir: he ? "rtl" : "ltr" }, local || it.prompt_text),
         ...(local ? [el("p", { class: "ptext-en", dir: "ltr" }, it.prompt_text)] : []))),
     el("div", { class: "pair" },
-      el("figure", {}, el("figcaption", { dir: "ltr" }, "A"), vids[0]),
-      el("figure", {}, el("figcaption", { dir: "ltr" }, "B"), vids[1])),
+      el("figure", {}, el("figcaption", { dir: "ltr" }, "A"), vids[0], ...(CFG.pf ? [seg("first")] : [])),
+      el("figure", {}, el("figcaption", { dir: "ltr" }, "B"), vids[1], ...(CFG.pf ? [seg("second")] : []))),
     replay,
     el("div", { class: "verdicts" }, ...btns),
-    el("p", { class: "hint" }, T().unlock),
+    el("p", { class: "hint" }, CFG.pf ? T().unlockPf : T().unlock),
     el("label", { class: "flag" }, flag, " ", T().flag),
     note);
   if (pos > 0) {
@@ -226,9 +269,10 @@ function show() {
   shownAt = Date.now();
 }
 
-function answer(it, choice, note, promptFlag) {
+function answer(it, choice, note, promptFlag, verdicts) {
   const body = { pair_id: it.pair_id, first: it.first, second: it.second, choice, note, prompt_flag: promptFlag,
                  elapsed_ms: Date.now() - shownAt, round, lang, rater_id: raterId(), src: QS.get("src") || "" };
+  if (CFG.pf) { body.verdict_first = verdicts.first; body.verdict_second = verdicts.second; }
   const send = (n) => fetch(`${CFG.api}/answer`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
     .then((r) => { if (!r.ok && r.status >= 500 && n > 0) throw new Error(r.status); })
     .catch(() => n > 0 && setTimeout(() => send(n - 1), 2000));

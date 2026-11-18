@@ -103,6 +103,19 @@ def test_retired_study_is_not_served(client):
     assert studies == ["s1", "s2"]
 
 
+def test_answer_stores_verdicts_by_leg(client):
+    it = client.get("/api/round", params={"rater": "r9"}).json()["items"][0]
+    body = {"pair_id": it["pair_id"], "first": it["first"], "second": it["second"], "choice": "same",
+            "elapsed_ms": 5, "rater_id": "r9", "verdict_first": "pass", "verdict_second": "fail"}
+    assert client.post("/api/answer", json=body).status_code == 200
+    doc = _run(client.db.study_answers.find_one({"rater_id": "r9"}))
+    first_leg = "base" if it["first"].startswith("s1b") else "ext"
+    second_leg = {"base": "ext", "ext": "base"}[first_leg]
+    assert doc["verdicts"] == {it["first"]: "pass", it["second"]: "fail"}
+    assert doc["verdict_leg"] == {first_leg: "pass", second_leg: "fail"}
+    assert client.post("/api/answer", json={**body, "verdict_first": "great"}).status_code == 422
+
+
 def test_answer_rejects_foreign_clip(client):
     bad = client.post("/api/answer", json={"pair_id": "s1-p00", "first": "s1b00", "second": "s1e01",
                                            "choice": "first", "elapsed_ms": 1})
