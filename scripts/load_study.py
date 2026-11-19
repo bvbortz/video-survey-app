@@ -4,12 +4,14 @@ into MongoDB for the survey at / (app/survey.py): study_clips and study_pairs.
 
 The manifest names its study. Loading it upserts its clips and pairs and retires every pair of
 any other study, so / serves this one only; answers to the old study stay, tagged with theirs.
+--keep-others leaves the other studies' pairs live: / then serves all live studies together (a
+round draws from every live pair, fewest answers first), and every answer carries its pair's study.
 Refuses a manifest whose pairs name clips it does not hold, a clip with no Hebrew or Russian
 text, or a pair of another study.
 
 Usage:
   export MONGO_URI='mongodb+srv://survey_app:...@.../survey'
-  python scripts/load_study.py ../user-survey/study_manifest.json [--dry-run]
+  python scripts/load_study.py ../user-survey/study_manifest.json [--dry-run] [--keep-others]
 """
 from __future__ import annotations
 
@@ -43,6 +45,7 @@ def main() -> int:
     ap.add_argument("manifest")
     ap.add_argument("--db", default="survey")
     ap.add_argument("--dry-run", action="store_true", help="check the manifest only")
+    ap.add_argument("--keep-others", action="store_true", help="do not retire other studies' pairs")
     args = ap.parse_args()
     m = json.load(open(args.manifest))
     errs = check(m)
@@ -67,6 +70,10 @@ def main() -> int:
     r = db.study_pairs.bulk_write([UpdateOne({"pair_id": p["pair_id"]}, {"$set": {**p, "active": True}}, upsert=True)
                                    for p in m["pairs"]])
     print(f"study_pairs: {r.upserted_count} new, {r.modified_count} updated")
+    if args.keep_others:
+        live = sorted(db.study_pairs.distinct("study", {"active": {"$ne": False}}))
+        print(f"kept other studies live: now serving {', '.join(live)}")
+        return 0
     r = db.study_pairs.update_many({"study": {"$ne": m["study"]}, "active": {"$ne": False}}, {"$set": {"active": False}})
     print(f"retired {r.modified_count} pair(s) of other studies")
     return 0
