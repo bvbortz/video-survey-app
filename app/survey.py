@@ -53,10 +53,12 @@ def _video_url(file: str) -> str:
 def pick_round(pairs: list[dict], counts: dict[str, int], seen: set[str], rng: random.Random,
                n: int = N_ROUND, n_core: int = N_CORE) -> list[dict]:
     """Up to n_core unseen core pairs, then unseen others; fewest answers first, ties at random;
-    one pair per prompt. A rater who has had every non-core pair gets the rest of the core."""
+    one pair per prompt. A rater who has had every non-core pair gets the rest of the core.
+    A pair's "boost" (default 0) counts as that many answers fewer: a study added on top of live
+    ones (boost 1) is served first until each of its pairs has one answer, then mixes in evenly."""
     left = [p for p in pairs if p["pair_id"] not in seen]
     rng.shuffle(left)
-    left.sort(key=lambda p: counts.get(p["pair_id"], 0))
+    left.sort(key=lambda p: counts.get(p["pair_id"], 0) - p.get("boost", 0))   # boost: a new study catches up
     out, used = [], set()
     for want_core, cap in ((True, n_core), (False, n), (None, n)):
         for p in left:

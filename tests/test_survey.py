@@ -66,6 +66,19 @@ def test_pick_round_core_exhausted_and_fill():
     assert len(out) == 4 and all(p["core"] for p in out)        # the rest of the core fills the round
 
 
+def test_pick_round_boost_serves_a_new_study_first_then_evenly():
+    _, pairs = _manifest(n_prompts=30, n_core=0)
+    new = {p["pair_id"] for p in pairs[20:]}
+    for p in pairs:
+        if p["pair_id"] in new:
+            p["boost"] = 1
+    out = survey.pick_round(pairs, {}, set(), random.Random(0))
+    assert {p["pair_id"] for p in out} <= new                    # unanswered boosted pairs come first
+    counts = {pid: 1 for pid in new}                             # each boosted pair has one answer
+    out = survey.pick_round(pairs, counts, set(), random.Random(1))
+    assert len(out) == survey.N_ROUND                            # now level with the unanswered others
+
+
 def test_root_serves_the_study_page(client):
     r = client.get("/")
     assert r.status_code == 200 and 'data-api="/api"' in r.text and "/compare.js" in r.text
